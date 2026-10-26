@@ -1,0 +1,29 @@
+#include <winver.h>
+1 ICON "assets/icon.ico"
+1 24 "assets/app.manifest"
+
+1 VERSIONINFO
+FILEVERSION 0,10,0,0
+PRODUCTVERSION 0,10,0,0
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904b0"
+    BEGIN
+      VALUE "CompanyName", "Voiceolator"
+      VALUE "FileDescription", "Voiceolator - streamer voice isolation"
+      VALUE "FileVersion", "0.10.0"
+      VALUE "InternalName", "Voiceolator"
+      VALUE "LegalCopyright", "MIT OR Apache-2.0"
+      VALUE "OriginalFilename", "Voiceolator.exe"
+      VALUE "ProductName", "Voiceolator"
+      VALUE "ProductVersion", "0.10.0"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x409, 1200
+  END
+END

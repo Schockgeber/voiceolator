@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Voiceolator
+GenericName=Streamer voice isolation
+Comment=Hear only the streamer's voice: removes music, game sounds and alerts in real time
+Exec=voiceolator
+Icon=voiceolator
+Terminal=false
+Categories=AudioVideo;Audio;
+Keywords=twitch;stream;voice;speech;noise;music;
+StartupWMClass=Voiceolator
