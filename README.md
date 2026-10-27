@@ -231,7 +231,9 @@ architecture.
 ## Contributing
 
 Bug reports, ideas and pull requests are welcome. Please read
-[CONTRIBUTING.md](CONTRIBUTING.md) first. Security issues: see [SECURITY.md](SECURITY.md).
+[CONTRIBUTING.md](CONTRIBUTING.md) first. 
+<br>
+Security issues: see [SECURITY.md](SECURITY.md).
 
 ## Credits
 
