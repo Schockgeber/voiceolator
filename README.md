@@ -4,8 +4,6 @@
 
 <br>
 
-[![Latest release](https://img.shields.io/github/v/release/Schockgeber/voiceolator?style=flat-square&label=release&color=2ED6C4&labelColor=1b1e2b)](https://github.com/Schockgeber/voiceolator/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/Schockgeber/voiceolator/total?style=flat-square&color=A084FF&labelColor=1b1e2b)](https://github.com/Schockgeber/voiceolator/releases)
 [![Build](https://img.shields.io/github/actions/workflow/status/Schockgeber/voiceolator/ci.yml?branch=main&style=flat-square&label=build&labelColor=1b1e2b)](https://github.com/Schockgeber/voiceolator/actions/workflows/ci.yml)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%2010%2F11%20%7C%20Linux-6AA8FF?style=flat-square&labelColor=1b1e2b)](#download)
 [![License](https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-8b93ad?style=flat-square&labelColor=1b1e2b)](#license)
@@ -238,21 +236,33 @@ Bug reports, ideas and pull requests are welcome. Please read
 
 ## Credits
 
-[DPDFNet](https://huggingface.co/Ceva-IP/DPDFNet) by Ceva (Apache-2.0) ·
-[DeepFilterNet](https://github.com/Rikorose/DeepFilterNet) by Hendrik Schröter (MIT/Apache-2.0) ·
-[ONNX Runtime](https://github.com/microsoft/onnxruntime) (MIT) ·
-[egui](https://github.com/emilk/egui) (MIT/Apache-2.0) ·
-[wasapi-rs](https://github.com/HEnquist/wasapi-rs) (MIT) ·
-[Symphonia](https://github.com/pdeljanov/Symphonia) (MPL-2.0) ·
-[rubato](https://github.com/HEnquist/rubato) (MIT) ·
-[tray-icon](https://github.com/tauri-apps/tray-icon) (MIT/Apache-2.0) ·
-[ksni](https://github.com/iovxw/ksni) (Unlicense) ·
-[rfd](https://github.com/PolyMeilex/rfd) (MIT) ·
-[Inter](https://rsms.me/inter/) typeface in the README graphics (OFL-1.1).
+[DPDFNet](https://huggingface.co/Ceva-IP/DPDFNet) by Ceva (Apache-2.0)
+<br>
+[DeepFilterNet](https://github.com/Rikorose/DeepFilterNet) by Hendrik Schröter (MIT/Apache-2.0)
+<br>
+[ONNX Runtime](https://github.com/microsoft/onnxruntime) (MIT)
+<br>
+[egui](https://github.com/emilk/egui) (MIT/Apache-2.0)
+<br>
+[wasapi-rs](https://github.com/HEnquist/wasapi-rs) (MIT)
+<br>
+[Symphonia](https://github.com/pdeljanov/Symphonia) (MPL-2.0)
+<br>
+[rubato](https://github.com/HEnquist/rubato) (MIT)
+<br>
+[tray-icon](https://github.com/tauri-apps/tray-icon) (MIT/Apache-2.0)
+<br>
+[ksni](https://github.com/iovxw/ksni) (Unlicense)
+<br>
+[rfd](https://github.com/PolyMeilex/rfd) (MIT)
+<br>
+[Inter](https://rsms.me/inter/) typeface in the README graphics (OFL-1.1)
+<br>
 [FFmpeg](https://ffmpeg.org) is not included; it is used if present, or downloaded on
 request from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) (Windows) or
-[johnvansickle.com](https://johnvansickle.com/ffmpeg/) (Linux).
-All third-party licenses: [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+[johnvansickle.com](https://johnvansickle.com/ffmpeg/) (Linux)
+<br>
+All third-party licenses: [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)
 
 ## License
 
