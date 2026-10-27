@@ -19,7 +19,7 @@
 
 <br>
 
-**Voiceolator removes background music, game sounds and alerts from a Twitch stream in
+**Voiceolator removes background music, game sounds and alerts from a stream in
 real time and plays only the streamer's voice to your headphones.** Your game's sound is
 never touched. It works just as well on files: drop in a VOD or a recording and get it
 back with nothing but the voice.
