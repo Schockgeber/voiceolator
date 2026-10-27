@@ -394,6 +394,12 @@ All permissive; where a crate offers a choice (e.g. "Apache-2.0 OR GPL-2.0-only"
 | ffmpeg 9.0.2 "essentials" build for Windows (gyan.dev) | GPL-3.0 | Only for video files and MP3/M4A/FLAC output. Downloaded from www.gyan.dev after the user confirms, checked against a fixed SHA-256, stored in `%LOCALAPPDATA%\Voiceolator\ffmpeg`. A separate program that Voiceolator runs; it is not linked |
 | ffmpeg 7.0.2 static build for Linux x86_64 (johnvansickle.com) | GPL-3.0 | Same, stored in `~/.local/share/voiceolator/ffmpeg`. A system ffmpeg (e.g. `sudo apt install ffmpeg`) is used instead when present |
 
+## README graphics (docs/assets, not part of the program)
+
+Text in the banner and download buttons is drawn from the outlines of the Inter typeface
+(Rasmus Andersson, SIL Open Font License 1.1). The Linux logo is the "Linux" icon from
+Simple Icons (CC0-1.0). See `tools/readme_graphics.py`.
+
 ## Fonts embedded in the GUI (via `epaint_default_fonts`)
 
 Ubuntu-Light (Ubuntu Font Licence 1.0), Hack (MIT / Bitstream Vera), Noto Emoji (SIL OFL 1.1),

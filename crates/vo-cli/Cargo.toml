@@ -4,6 +4,7 @@ description = "Voiceolator command-line prototype (Stage 3): capture an app, iso
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 
 [[bin]]
 name = "voiceolator-cli"

@@ -37,6 +37,8 @@
   audio/video files (optional), and it closes a Voiceolator hidden in the tray before
   updating. `Voiceolator --quit` quits a running copy.
 - Linux: the menu entry accepts files ("Open with Voiceolator").
+- Release files have fixed names (e.g. `Voiceolator-Setup-Windows-x64.exe`), so the
+  download buttons in the README always point to the newest release.
 - Fixed: with the light Windows theme, buttons, lists and dialogs were drawn in light
   colours on the dark window. The app now always uses its dark style.
 

@@ -6,13 +6,14 @@
     python tools/package.py --skip-build        # reuse existing binaries
     python tools/package.py --bundle            # also write the single GitHub-ready zip
 
-Produces in dist/:
-    Voiceolator-<ver>-windows-setup.exe          per-user installer (NSIS)
-    Voiceolator-<ver>-windows-portable.zip       unzip and run
-    Voiceolator-<ver>-windows-cli.zip            command-line tool
-    Voiceolator-<ver>-linux-x86_64.AppImage      download, chmod +x, run
-    Voiceolator-<ver>-linux-x86_64.tar.gz        portable (+ install.sh for a menu entry)
-    Voiceolator-<ver>-linux-cli-x86_64.tar.gz    command-line tool
+Produces in dist/ (names without the version, so the README's
+".../releases/latest/download/<name>" buttons always fetch the newest release):
+    Voiceolator-Setup-Windows-x64.exe       per-user installer (NSIS)
+    Voiceolator-Portable-Windows-x64.zip    unzip and run
+    Voiceolator-CLI-Windows-x64.zip         command-line tool
+    Voiceolator-Linux-x86_64.AppImage       download, chmod +x, run
+    Voiceolator-Linux-x86_64.tar.gz         portable (+ install.sh for a menu entry)
+    Voiceolator-CLI-Linux-x86_64.tar.gz     command-line tool
     SHA256SUMS.txt
 and with --bundle: Voiceolator-<ver>-github-ready.zip (repository + all of the above).
 
@@ -125,11 +126,11 @@ def package_windows(ver, a):
     common_docs(stage, newline="\r\n")
 
     out = []
-    portable = os.path.join(DIST, f"Voiceolator-{ver}-windows-portable.zip")
+    portable = os.path.join(DIST, "Voiceolator-Portable-Windows-x64.zip")
     zipdir(stage, portable, f"Voiceolator-{ver}")
     out.append(portable)
 
-    cli = os.path.join(DIST, f"Voiceolator-{ver}-windows-cli.zip")
+    cli = os.path.join(DIST, "Voiceolator-CLI-Windows-x64.zip")
     with zipfile.ZipFile(cli, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         z.write(os.path.join(bindir, "voiceolator-cli.exe"), "voiceolator-cli.exe")
         z.writestr("README.txt", "Copy voiceolator-cli.exe into your Voiceolator folder (next to onnxruntime.dll and models\\).\r\n"
@@ -137,7 +138,7 @@ def package_windows(ver, a):
                    "Files: `voiceolator-cli process \"VOD.mp4\"` writes \"VOD (voice).mp4\" (`voiceolator-cli ffmpeg --download` gets ffmpeg).\r\n")
     out.append(cli)
 
-    setup = os.path.join(DIST, f"Voiceolator-{ver}-windows-setup.exe")
+    setup = os.path.join(DIST, "Voiceolator-Setup-Windows-x64.exe")
     run(["makensis", "-V2", f"-DVERSION={ver}", f"-DSRCDIR={stage}", f"-DOUTFILE={setup}", os.path.join(ROOT, "installer", "voiceolator.nsi")])
     out.insert(0, setup)
     return out
@@ -185,7 +186,7 @@ def package_linux(ver, a):
         os.chmod(os.path.join(appdir, "AppRun"), 0o755)
         shutil.copy(os.path.join(pk, "voiceolator.desktop"), appdir)
         shutil.copy(os.path.join(ROOT, "crates", "vo-gui", "assets", "icon.png"), os.path.join(appdir, "voiceolator.png"))
-        appimage = os.path.join(DIST, f"Voiceolator-{ver}-linux-x86_64.AppImage")
+        appimage = os.path.join(DIST, "Voiceolator-Linux-x86_64.AppImage")
         env = dict(os.environ, ARCH="x86_64", VERSION=ver)
         cmd = [tool]
         if a.appimage_extract_and_run:
@@ -203,7 +204,7 @@ def package_linux(ver, a):
         shutil.copy(os.path.join(pk, f), stage)
     os.chmod(os.path.join(stage, "install.sh"), 0o755)
     shutil.copy(os.path.join(ROOT, "crates", "vo-gui", "assets", "icon.png"), os.path.join(stage, "voiceolator.png"))
-    tgz = os.path.join(DIST, f"Voiceolator-{ver}-linux-x86_64.tar.gz")
+    tgz = os.path.join(DIST, "Voiceolator-Linux-x86_64.tar.gz")
     tardir(stage, tgz, f"Voiceolator-{ver}")
     out.append(tgz)
 
@@ -217,7 +218,7 @@ def package_linux(ver, a):
         "or into ~/.local/share/voiceolator after running install.sh. Run `voiceolator-cli help`.\n"
         "Files: `voiceolator-cli process VOD.mp4` writes \"VOD (voice).mp4\" (needs ffmpeg for video:\n"
         "install it with your package manager or run `voiceolator-cli ffmpeg --download`).\n")
-    cli = os.path.join(DIST, f"Voiceolator-{ver}-linux-cli-x86_64.tar.gz")
+    cli = os.path.join(DIST, "Voiceolator-CLI-Linux-x86_64.tar.gz")
     tardir(cli_stage, cli, f"voiceolator-cli-{ver}")
     out.append(cli)
     return out
@@ -234,7 +235,8 @@ This zip contains everything:
 
 ## 0. Create the repository
 
-Create an empty repository on GitHub (no README, licence or .gitignore). In its
+Create an empty repository named `voiceolator` on GitHub
+(https://github.com/new, no README, licence or .gitignore). In its
 **About** box (gear icon) use:
 
 * Description: `Real-time AI voice isolation for Twitch streams and video files. Hear only the streamer's voice while you game: music and sound effects are removed locally, your game audio stays untouched. Windows & Linux.`
@@ -249,17 +251,21 @@ git init
 git add .
 git commit -m "Voiceolator {ver}"
 git branch -M main
-git remote add origin https://github.com/<your-account>/voiceolator.git
+git remote add origin https://github.com/Schockgeber/voiceolator.git
 git push -u origin main
 ```
+
+If the repository already exists and has commits you want to replace with this version,
+push with `git push -u origin main --force` instead (this overwrites its history).
 
 `.github/workflows/ci.yml` builds and tests Windows and Linux on every push.
 
 ## 2. Create the release
 
 On GitHub: **Releases → Draft a new release**, tag `v{ver}`, title `Voiceolator {ver}`.
-Drag in every file from `release-assets/`, paste the matching part of `CHANGELOG.md` as
-the description, and publish.
+Drag in every file from `release-assets/`, paste the contents of `RELEASE-NOTES.md`
+(download table + changelog) as the description, and publish. Keep the file names as they are: the download buttons in
+the README link to `releases/latest/download/<file name>`.
 
 Pushing a tag (`git tag v{ver} && git push --tags`) makes the CI workflow build the same
 files on GitHub and attach them to the release automatically. Use either the files from
@@ -275,12 +281,12 @@ this zip or the CI build, not both.
 """
 
 DESCR = {
-    "windows-setup.exe": "Windows 10 (2004+) / 11: installer, the recommended choice",
-    "windows-portable.zip": "Windows: unzip and run `Voiceolator.exe`",
-    "windows-cli.zip": "Windows: command-line tool (power users)",
-    "linux-x86_64.AppImage": "Linux: download, `chmod +x`, run",
-    "linux-x86_64.tar.gz": "Linux: portable; `./install.sh` adds a menu entry",
-    "linux-cli-x86_64.tar.gz": "Linux: command-line tool (power users)",
+    "Voiceolator-Setup-Windows-x64.exe": "Windows 10 (2004+) / 11: installer, the recommended choice",
+    "Voiceolator-Portable-Windows-x64.zip": "Windows: unzip and run `Voiceolator.exe`",
+    "Voiceolator-CLI-Windows-x64.zip": "Windows: command-line tool (power users)",
+    "Voiceolator-Linux-x86_64.AppImage": "Linux: download, `chmod +x`, run",
+    "Voiceolator-Linux-x86_64.tar.gz": "Linux: portable; `./install.sh` adds a menu entry",
+    "Voiceolator-CLI-Linux-x86_64.tar.gz": "Linux: command-line tool (power users)",
 }
 
 
@@ -291,8 +297,7 @@ def bundle(ver, files):
     rows = []
     for f in files:
         name = os.path.basename(f)
-        key = name.split(f"{ver}-", 1)[-1]
-        rows.append(f"| `{name}` | {DESCR.get(key, '')} |")
+        rows.append(f"| `{name}` | {DESCR.get(name, '')} |")
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
         with zipfile.ZipFile(src_zip) as s:
             for info in s.infolist():
@@ -305,6 +310,8 @@ def bundle(ver, files):
             with open(f, "rb") as fh:
                 z.writestr(info, fh.read())
         z.writestr("HOW-TO-PUBLISH.md", PUBLISH.format(ver=ver, table="\n".join(rows)))
+        notes = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "release_notes.py"), ver], capture_output=True, text=True, check=True).stdout
+        z.writestr("RELEASE-NOTES.md", notes)
     os.remove(src_zip)
     return out
 

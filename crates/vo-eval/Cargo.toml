@@ -4,6 +4,7 @@ description = "Offline evaluation / A-B tool: runs the exact real-time pipeline 
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 
 [dependencies]
 vo-dsp = { path = "../vo-dsp" }

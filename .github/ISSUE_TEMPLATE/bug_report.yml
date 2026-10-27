@@ -1,0 +1,57 @@
+name: Bug report
+description: Something doesn't work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Please check the [troubleshooting section](https://github.com/Schockgeber/voiceolator/blob/main/docs/USER_GUIDE.md#troubleshooting) first.
+  - type: input
+    id: version
+    attributes:
+      label: Voiceolator version
+      description: Shown at the bottom right of the window.
+      placeholder: "0.11.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: System
+      options:
+        - Windows 11
+        - Windows 10
+        - Linux (PipeWire)
+        - Linux (PulseAudio)
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: details
+    attributes:
+      label: System details
+      description: Windows build, or Linux distribution and desktop; browser; headphones (wired/Bluetooth).
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Live stream (capture, sound, latency)
+        - Files tab / file processing
+        - ffmpeg download
+        - Tray, compact window, hotkeys
+        - Installer / AppImage / start-up
+        - Other
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: "Windows: %LOCALAPPDATA%\\Voiceolator\\voiceolator.log (Options → Open log folder). Linux: ~/.config/Voiceolator/voiceolator.log"
+      render: text

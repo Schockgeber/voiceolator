@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: User guide and troubleshooting
+    url: https://github.com/Schockgeber/voiceolator/blob/main/docs/USER_GUIDE.md
+    about: Setup, controls, known limits and fixes for common problems.
+  - name: Report a security problem
+    url: https://github.com/Schockgeber/voiceolator/security/advisories/new
+    about: Please report vulnerabilities privately.

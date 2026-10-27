@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Voiceolator">
+<title>Voiceolator</title>
+<defs><linearGradient id="iconbg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#23263a"/><stop offset="1" stop-color="#14161f"/></linearGradient></defs>
+<rect x="0" y="0" width="256" height="256" rx="56.3" fill="url(#iconbg)"/>
+<rect x="0.5" y="0.5" width="255" height="255" rx="56.3" fill="none" stroke="#ffffff" stroke-opacity="0.08"/>
+<rect x="35.8" y="107.5" width="11.5" height="41.0" rx="5.8" fill="#5b6178"/>
+<rect x="53.1" y="94.7" width="11.5" height="66.6" rx="5.8" fill="#5b6178"/>
+<rect x="70.4" y="102.4" width="11.5" height="51.2" rx="5.8" fill="#5b6178"/>
+<rect x="87.7" y="74.2" width="11.5" height="107.5" rx="5.8" fill="#2ED6C4"/>
+<rect x="105.0" y="48.6" width="11.5" height="158.7" rx="5.8" fill="#43C7E0"/>
+<rect x="122.2" y="25.6" width="11.5" height="204.8" rx="5.8" fill="#6AA8FF"/>
+<rect x="139.5" y="48.6" width="11.5" height="158.7" rx="5.8" fill="#7F9BFF"/>
+<rect x="156.8" y="64.0" width="11.5" height="128.0" rx="5.8" fill="#A084FF"/>
+<rect x="174.1" y="94.7" width="11.5" height="66.6" rx="5.8" fill="#5b6178"/>
+<rect x="191.4" y="84.5" width="11.5" height="87.0" rx="5.8" fill="#5b6178"/>
+<rect x="208.6" y="107.5" width="11.5" height="41.0" rx="5.8" fill="#5b6178"/>
+</svg>

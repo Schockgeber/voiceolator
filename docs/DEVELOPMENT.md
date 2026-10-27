@@ -12,6 +12,8 @@ crates/vo-eval    offline runner of the exact real-time pipeline over WAV files
 tools/eval        test-set builder + scoring (SI-SDR, STOI, PESQ, DNSMOS, dropouts)
 tools/fetch_deps.py   downloads DPDFNet model + ONNX Runtime (pinned, checksummed)
 tools/package.py      builds installer, portable zips, AppImage, tarballs, GitHub bundle
+tools/release_notes.py    GitHub release description (download table + CHANGELOG section)
+tools/readme_graphics.py  regenerates docs/assets/*.svg (banner, download buttons)
 installer/        NSIS script
 docs/             user guide, evaluation, this file
 ```

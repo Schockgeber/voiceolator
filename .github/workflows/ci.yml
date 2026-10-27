@@ -70,7 +70,13 @@ jobs:
         with:
           path: assets
           merge-multiple: true
+      - uses: actions/checkout@v4
+        with:
+          path: src
       - run: cd assets && sha256sum * > SHA256SUMS.txt
+      - run: python3 src/tools/release_notes.py "${GITHUB_REF_NAME}" > notes.md
       - uses: softprops/action-gh-release@v2
         with:
+          name: Voiceolator ${{ github.ref_name }}
+          body_path: notes.md
           files: assets/*

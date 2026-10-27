@@ -1,27 +1,24 @@
-[workspace]
-resolver = "2"
-members = ["crates/vo-dsp", "crates/vo-audio", "crates/vo-media", "crates/vo-cli", "crates/vo-eval", "crates/vo-gui"]
+[package]
+name = "vo-media"
+description = "Voiceolator file processing: decode audio/video files, isolate the voice, write audio or video"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
-[workspace.package]
-version = "0.11.0"
-edition = "2021"
-license = "MIT OR Apache-2.0"
+[dependencies]
+vo-dsp = { path = "../vo-dsp" }
+anyhow.workspace = true
+log.workspace = true
+hound = "3.5"
+symphonia = { version = "0.5", default-features = false, features = ["aac", "alac", "flac", "mp3", "pcm", "vorbis", "wav", "ogg", "mkv", "isomp4", "adpcm"] }
+rubato = "0.16"
+ureq = { version = "2.12", default-features = false, features = ["tls", "native-certs"] }
+sha2 = "0.10"
 
-[workspace.dependencies]
-# DeepFilterNet3 reference implementation (MIT OR Apache-2.0), pinned to a known commit.
-# Built with the tract (pure-Rust) inference backend and the DFN3 model embedded in the binary.
-deep_filter = { git = "https://github.com/Rikorose/DeepFilterNet", rev = "d375b2d8309e0935d165700c91da9de862a99c31", default-features = false, features = ["tract", "default-model"] }
-ndarray = "0.15"
-anyhow = "1"
-log = "0.4"
+[target.'cfg(windows)'.dependencies]
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
-[profile.release]
-opt-level = 3
-lto = "thin"
-codegen-units = 1
-debug = false
-strip = "symbols"
-
-# tract is very slow in debug builds; always optimise dependencies.
-[profile.dev.package."*"]
-opt-level = 3
+[target.'cfg(not(windows))'.dependencies]
+lzma-rs = "0.3"
+tar = { version = "0.4", default-features = false }

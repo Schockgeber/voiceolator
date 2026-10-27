@@ -32,20 +32,20 @@ graphics card power for the audio.
 
 **Windows**
 
-1. Run `Voiceolator-<version>-windows-setup.exe`. You don't need administrator rights.
+1. Download and run [`Voiceolator-Setup-Windows-x64.exe`](https://github.com/Schockgeber/voiceolator/releases/latest/download/Voiceolator-Setup-Windows-x64.exe). You don't need administrator rights.
 2. Windows may show **"Windows protected your PC"**. This happens because Voiceolator is
    a new, unsigned open-source program. Click **More info → Run anyway**.
 3. Start Voiceolator from the Start menu.
 
-Prefer not to install? Unzip `…-windows-portable.zip` anywhere and run `Voiceolator.exe`.
+Prefer not to install? Unzip [`Voiceolator-Portable-Windows-x64.zip`](https://github.com/Schockgeber/voiceolator/releases/latest/download/Voiceolator-Portable-Windows-x64.zip) anywhere and run `Voiceolator.exe`.
 
 **Linux**
 
-- **AppImage** (simplest): download `Voiceolator-<version>-linux-x86_64.AppImage`. Make it
-  executable (file properties → "Allow executing", or `chmod +x Voiceolator-*.AppImage`)
+- **AppImage** (simplest): download [`Voiceolator-Linux-x86_64.AppImage`](https://github.com/Schockgeber/voiceolator/releases/latest/download/Voiceolator-Linux-x86_64.AppImage). Make it
+  executable (file properties → "Allow executing", or `chmod +x Voiceolator-Linux-x86_64.AppImage`)
   and double-click it. If it says FUSE is missing, install `libfuse2`
   (`sudo apt install libfuse2`), or start it with `--appimage-extract-and-run`.
-- **Tarball:** extract `Voiceolator-<version>-linux-x86_64.tar.gz` and run `./voiceolator`.
+- **Tarball:** extract [`Voiceolator-Linux-x86_64.tar.gz`](https://github.com/Schockgeber/voiceolator/releases/latest/download/Voiceolator-Linux-x86_64.tar.gz) and run `./voiceolator`.
   `./install.sh` adds Voiceolator to your application menu (no root needed), and
   `./install.sh --uninstall` removes it.
 
