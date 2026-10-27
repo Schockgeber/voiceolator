@@ -259,8 +259,8 @@ Bug reports, ideas and pull requests are welcome. Please read
 [Inter](https://rsms.me/inter/) typeface in the README graphics (OFL-1.1)
 <br>
 [FFmpeg](https://ffmpeg.org) is not included; it is used if present, or downloaded on
-request from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) (Windows) or
-[johnvansickle.com](https://johnvansickle.com/ffmpeg/) (Linux)
+request
+<br>
 <br>
 All third-party licenses: [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)
 
