@@ -86,11 +86,11 @@ download is ffmpeg for video files, and only if you agree.
 
 | System | Download | Details |
 |---|---|---|
-| **Windows 10 (2004+) / 11** | [**Installer**](https://github.com/Schockgeber/voiceolator/releases/latest/download/Voiceolator-Setup-Windows-x64.exe) | `.exe` · recommended. No admin rights needed. Start-menu entry and an optional "Isolate the voice" right-click menu |
-| | [Portable](https://github.com/Schockgeber/voiceolator/releases/latest/download/Voiceolator-Portable-Windows-x64.zip) | `.zip` · unzip anywhere, run `Voiceolator.exe` |
-| **Linux x86_64** | [**AppImage**](https://github.com/Schockgeber/voiceolator/releases/latest/download/Voiceolator-Linux-x86_64.AppImage) | `chmod +x`, then double-click. Runs on most distributions |
-| | [Portable](https://github.com/Schockgeber/voiceolator/releases/latest/download/Voiceolator-Linux-x86_64.tar.gz) | `.tar.gz` · extract, run `./voiceolator`; `./install.sh` adds a menu entry |
-| **Command line** | [Windows](https://github.com/Schockgeber/voiceolator/releases/latest/download/Voiceolator-CLI-Windows-x64.zip) · [Linux](https://github.com/Schockgeber/voiceolator/releases/latest/download/Voiceolator-CLI-Linux-x86_64.tar.gz) | For scripting and batch processing |
+| **Windows 10 (2004+) / 11** | [**Installer**](https://github.com/Schockgeber/voiceolator/releases/download/v0.11.0/Voiceolator-0.11.0-windows-setup.exe) | `.exe` · recommended. No admin rights needed. Start-menu entry and an optional "Isolate the voice" right-click menu |
+| | [Portable](https://github.com/Schockgeber/voiceolator/releases/download/v0.11.0/Voiceolator-0.11.0-windows-portable.zip) | `.zip` · unzip anywhere, run `Voiceolator.exe` |
+| **Linux x86_64** | [**AppImage**](https://github.com/Schockgeber/voiceolator/releases/download/v0.11.0/Voiceolator-0.11.0-linux-x86_64.AppImage) | `chmod +x`, then double-click. Runs on most distributions |
+| | [Portable](https://github.com/Schockgeber/voiceolator/releases/download/v0.11.0/Voiceolator-0.11.0-linux-x86_64.tar.gz) | `.tar.gz` · extract, run `./voiceolator`; `./install.sh` adds a menu entry |
+| **Command line** | [Windows](https://github.com/Schockgeber/voiceolator/releases/download/v0.11.0/Voiceolator-0.11.0-windows-cli.zip) · [Linux](https://github.com/Schockgeber/voiceolator/releases/download/v0.11.0/Voiceolator-0.11.0-linux-cli-x86_64.tar.gz) | For scripting and batch processing |
 
 Every release lists SHA-256 checksums in `SHA256SUMS.txt`. Older versions and release notes
 are on the [Releases page](https://github.com/Schockgeber/voiceolator/releases).
