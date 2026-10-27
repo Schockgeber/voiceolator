@@ -4,7 +4,6 @@
 
 <br>
 
-[![Build](https://img.shields.io/github/actions/workflow/status/Schockgeber/voiceolator/ci.yml?branch=main&style=flat-square&label=build&labelColor=1b1e2b)](https://github.com/Schockgeber/voiceolator/actions/workflows/ci.yml)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%2010%2F11%20%7C%20Linux-6AA8FF?style=flat-square&labelColor=1b1e2b)](#download)
 [![License](https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-8b93ad?style=flat-square&labelColor=1b1e2b)](#license)
 
