@@ -17,6 +17,7 @@ log.workspace = true
 env_logger = { version = "0.11", default-features = false, features = ["humantime"] }
 ctrlc = "3.4"
 hound = "3.5"
+vo-media = { path = "../vo-media" }
 
 [target.'cfg(windows)'.dependencies]
 wasapi = "0.26"

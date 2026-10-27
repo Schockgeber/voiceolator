@@ -23,6 +23,6 @@ chmod +x "$DEST/voiceolator" "$DEST"/voiceolator-cli 2>/dev/null || true
 ln -sf "$DEST/voiceolator" "$BIN/voiceolator"
 [ -f "$DEST/voiceolator-cli" ] && ln -sf "$DEST/voiceolator-cli" "$BIN/voiceolator-cli"
 cp "$HERE/voiceolator.png" "$ICONS/voiceolator.png"
-sed "s|^Exec=.*|Exec=$DEST/voiceolator|" "$HERE/voiceolator.desktop" > "$APPS/voiceolator.desktop"
+sed "s|^Exec=voiceolator|Exec=$DEST/voiceolator|" "$HERE/voiceolator.desktop" > "$APPS/voiceolator.desktop"
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$APPS" >/dev/null 2>&1 || true
 echo "Voiceolator installed. Start it from your application menu or run: voiceolator"

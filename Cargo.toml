@@ -1,9 +1,9 @@
 [workspace]
 resolver = "2"
-members = ["crates/vo-dsp", "crates/vo-audio", "crates/vo-cli", "crates/vo-eval", "crates/vo-gui"]
+members = ["crates/vo-dsp", "crates/vo-audio", "crates/vo-media", "crates/vo-cli", "crates/vo-eval", "crates/vo-gui"]
 
 [workspace.package]
-version = "0.10.0"
+version = "0.11.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 

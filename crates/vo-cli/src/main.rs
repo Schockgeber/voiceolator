@@ -85,8 +85,12 @@ const HELP: &str = "voiceolator-cli: real-time streamer voice isolation (prototy
   voiceolator-cli latency [--output NAME] [--engine dpdfnet|dfn3]
                                               measure the real end-to-end delay (plays beeps)
   voiceolator-cli bench                       measure model CPU cost on this PC
-  voiceolator-cli process IN.wav OUT.wav [balanced|voice|max] [dfn3]
-                                              offline A/B of a recorded clip (48 kHz WAV)
+  voiceolator-cli process FILE... [--out DIR] [--format wav|mp3|m4a|flac] [--audio-only]
+                  [--keep-original-track] [--preset balanced|voice|max] [--engine quality|light] [--threads N]
+                                              isolate the voice in audio or video files
+                                              (writes \"NAME (voice).ext\" next to each file)
+  voiceolator-cli ffmpeg [--download [--yes] | --remove]
+                                              show / download / remove ffmpeg (for video + MP3/M4A/FLAC)
 
 While running type + Enter: b = toggle isolation (A/B), 1/2/3 = presets, +/- = volume, q = quit";
 
@@ -98,6 +102,7 @@ fn main() -> Result<()> {
     match first.as_str() {
         "--beacon" => return platform::beacon(),
         "process" => return process_file(),
+        "ffmpeg" => return ffmpeg_cmd(),
         _ => {}
     }
     let a = parse()?;
@@ -166,36 +171,164 @@ fn bench() -> Result<()> {
 
 fn process_file() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(2).collect();
-    if args.len() < 2 {
-        bail!("usage: voiceolator-cli process IN.wav OUT.wav [balanced|voice|max] [dfn3]");
-    }
-    let preset = args.get(2).and_then(|p| Preset::parse(p)).unwrap_or(Preset::Balanced);
-    let kind = if args.iter().any(|a| a == "dfn3") { EngineKind::Dfn3 } else { dpdfnet_kind().unwrap_or(EngineKind::Dfn3) };
-    let mut r = hound::WavReader::open(&args[0]).with_context(|| format!("open {}", args[0]))?;
-    let spec = r.spec();
-    if spec.sample_rate != 48000 {
-        bail!("{} is {} Hz; please supply 48 kHz audio", args[0], spec.sample_rate);
-    }
-    let ch = spec.channels as usize;
-    let samples: Vec<f32> = match spec.sample_format {
-        hound::SampleFormat::Float => r.samples::<f32>().collect::<Result<_, _>>()?,
-        hound::SampleFormat::Int => {
-            let sc = 1.0 / (1u64 << (spec.bits_per_sample - 1)) as f32;
-            r.samples::<i32>().map(|v| v.map(|v| v as f32 * sc)).collect::<Result<_, _>>()?
+    let mut files: Vec<PathBuf> = Vec::new();
+    let mut out_dir: Option<PathBuf> = None;
+    let mut format = vo_media::AudioFormat::Wav;
+    let mut preset = Preset::Balanced;
+    let mut light = false;
+    let mut make_video = true;
+    let mut keep_original = false;
+    let mut use_ffmpeg = true;
+    let mut threads = 0usize;
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        let mut v = || it.next().cloned().with_context(|| format!("{a} needs a value"));
+        match a.as_str() {
+            "--out" | "-o" => out_dir = Some(v()?.into()),
+            "--format" => format = vo_media::AudioFormat::parse(&v()?).context("format must be wav|mp3|m4a|flac")?,
+            "--preset" => preset = Preset::parse(&v()?).context("preset must be balanced|voice|max")?,
+            "--engine" => light = matches!(v()?.as_str(), "dfn3" | "light"),
+            "--audio-only" => make_video = false,
+            "--keep-original-track" => keep_original = true,
+            "--no-ffmpeg" => use_ffmpeg = false,
+            "--threads" => threads = v()?.parse().context("--threads needs a number")?,
+            // pre-0.11 positional form: process IN OUT [preset] [dfn3]
+            "balanced" | "voice" | "max" => preset = Preset::parse(a).unwrap(),
+            "dfn3" => light = true,
+            f if f.starts_with("--") => bail!("unknown option {f}"),
+            f => files.push(f.into()),
         }
-    };
-    let mono: Vec<f32> = samples.chunks(ch).map(|c| c.iter().sum::<f32>() / ch as f32).collect();
-    let settings = Settings::from_preset(preset);
-    let mut p = vo_dsp::Pipeline::new(vo_dsp::create_engine(&kind, &settings)?, settings);
-    let t = Instant::now();
-    let (y, _) = vo_dsp::process_offline(&mut p, &mono)?;
-    let el = t.elapsed().as_secs_f64();
-    let mut w = hound::WavWriter::create(&args[1], hound::WavSpec { channels: 1, sample_rate: 48000, bits_per_sample: 32, sample_format: hound::SampleFormat::Float })?;
-    for v in y {
-        w.write_sample(v)?;
     }
-    w.finalize()?;
-    println!("{} -> {} with {} / {} ({:.1}x faster than real time)", args[0], args[1], p.engine_name(), preset.label(), mono.len() as f64 / 48000.0 / el);
+    // Old form "process in.wav out.wav": second path does not exist and is a .wav
+    let mut single_out: Option<PathBuf> = None;
+    if files.len() == 2 && !files[1].exists() && files[1].extension().map(|e| e.eq_ignore_ascii_case("wav")).unwrap_or(false) {
+        single_out = files.pop();
+    }
+    if files.is_empty() {
+        bail!("usage: voiceolator-cli process FILE... [--out DIR] [--format wav|mp3|m4a|flac] [--audio-only] [--keep-original-track] [--preset balanced|voice|max] [--engine quality|light] [--threads N] [--no-ffmpeg]");
+    }
+    let engine = if light { EngineKind::Dfn3 } else { dpdfnet_kind().unwrap_or(EngineKind::Dfn3) };
+    let ffmpeg = if use_ffmpeg { vo_media::ffmpeg::find() } else { None };
+    match &ffmpeg {
+        Some(f) => println!("ffmpeg {} ({})", f.version, f.path.display()),
+        None if use_ffmpeg => println!("ffmpeg not found: built-in decoder, WAV output only (run `voiceolator-cli ffmpeg --download` to get it)"),
+        None => {}
+    }
+    let opts = vo_media::Options {
+        engine,
+        settings: Settings::from_preset(preset),
+        out_dir,
+        audio_format: format,
+        make_video,
+        keep_original_track: keep_original,
+        ffmpeg: ffmpeg.map(|f| f.path),
+        threads,
+    };
+    let cancel = Arc::new(AtomicBool::new(false));
+    {
+        let c = cancel.clone();
+        let _ = ctrlc::set_handler(move || c.store(true, Ordering::SeqCst));
+    }
+    let mut failed = 0;
+    for f in &files {
+        let mut last_pct = -1i32;
+        let mut speed = 0.0f32;
+        let r = vo_media::process(
+            f,
+            &opts,
+            &mut |p| {
+                if let Some(s) = p.speed {
+                    speed = s;
+                }
+                if let Some(fr) = p.fraction {
+                    let pct = (fr * 100.0) as i32;
+                    if pct / 10 != last_pct / 10 {
+                        last_pct = pct;
+                        eprint!("\r{}: {:>3}%  ({:.1}x real time)   ", f.display(), pct, speed);
+                    }
+                }
+            },
+            &cancel,
+        );
+        eprint!("\r");
+        match r {
+            Ok(d) => {
+                let out = match &single_out {
+                    Some(o) => {
+                        std::fs::rename(&d.output, o)?;
+                        o.clone()
+                    }
+                    None => d.output.clone(),
+                };
+                println!("{} -> {}  ({:.0} s of audio in {:.1} s, {:.0}x real time, {})", f.display(), out.display(), d.audio_seconds, d.elapsed_s, d.audio_seconds / d.elapsed_s.max(1e-3), d.engine);
+                for n in d.notes {
+                    println!("  note: {n}");
+                }
+            }
+            Err(e) if e.is::<vo_media::Cancelled>() => {
+                println!("cancelled");
+                std::process::exit(130);
+            }
+            Err(e) => {
+                failed += 1;
+                println!("{}: FAILED: {e:#}", f.display());
+            }
+        }
+    }
+    if failed > 0 {
+        bail!("{failed} file(s) failed");
+    }
+    Ok(())
+}
+
+fn ffmpeg_cmd() -> Result<()> {
+    let args: Vec<String> = std::env::args().skip(2).collect();
+    let download = args.iter().any(|a| a == "--download");
+    let yes = args.iter().any(|a| a == "--yes" || a == "-y");
+    if args.iter().any(|a| a == "--remove") {
+        vo_media::ffmpeg::remove_downloaded()?;
+        println!("removed {}", vo_media::ffmpeg::managed_dir().display());
+        return Ok(());
+    }
+    if let Some(f) = vo_media::ffmpeg::find() {
+        println!("ffmpeg {} at {}", f.version, f.path.display());
+        if !download {
+            return Ok(());
+        }
+    } else if !download {
+        println!("ffmpeg not found. `voiceolator-cli ffmpeg --download` downloads it (Voiceolator works without it for WAV files).");
+        return Ok(());
+    }
+    let info = vo_media::ffmpeg::DOWNLOAD.as_ref().context("no ffmpeg download is available for this system; install ffmpeg with your package manager")?;
+    println!(
+        "Download ffmpeg {} ({} build, {} licence, {:.0} MB) from\n  {}\ninto {}?",
+        info.version,
+        info.publisher,
+        info.license,
+        info.size as f64 / 1e6,
+        info.urls[0],
+        vo_media::ffmpeg::managed_dir().display()
+    );
+    if !yes {
+        print!("Type y + Enter to continue: ");
+        std::io::Write::flush(&mut std::io::stdout())?;
+        let mut l = String::new();
+        std::io::stdin().read_line(&mut l)?;
+        if !l.trim().eq_ignore_ascii_case("y") {
+            println!("not downloaded");
+            return Ok(());
+        }
+    }
+    let cancel = AtomicBool::new(false);
+    let f = vo_media::ffmpeg::download(
+        &mut |s| match s {
+            vo_media::ffmpeg::DownloadStage::Downloading { done, total } => eprint!("\rdownloading {:>3}%", done * 100 / total.max(1)),
+            vo_media::ffmpeg::DownloadStage::Extracting => eprint!("\runpacking...      "),
+        },
+        &cancel,
+    )?;
+    eprintln!();
+    println!("ffmpeg {} installed at {}", f.version, f.path.display());
     Ok(())
 }
 

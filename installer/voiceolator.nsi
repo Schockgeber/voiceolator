@@ -1,5 +1,5 @@
 ; Voiceolator installer (NSIS 3, Modern UI 2). Per-user install: no admin rights needed.
-; Build: makensis -DVERSION=0.10.0 -DSRCDIR=<staged app folder> -DOUTFILE=<setup.exe> voiceolator.nsi
+; Build: makensis -DVERSION=0.11.0 -DSRCDIR=<staged app folder> -DOUTFILE=<setup.exe> voiceolator.nsi
 
 Unicode true
 ManifestDPIAware true
@@ -70,10 +70,45 @@ FunctionEnd
 Function CloseRunning
   FindWindow $0 "" "Voiceolator"
   ${If} $0 <> 0
-    MessageBox MB_ICONINFORMATION|MB_OKCANCEL "Voiceolator is running. Please close it, then click OK." /SD IDOK IDOK +2
-    Abort
+    ; It may be hidden in the tray: ask it to quit (Voiceolator --quit), then check again.
+    ${If} ${FileExists} "$INSTDIR\Voiceolator.exe"
+      ExecWait '"$INSTDIR\Voiceolator.exe" --quit'
+      Sleep 1500
+    ${EndIf}
+    FindWindow $0 "" "Voiceolator"
+    ${If} $0 <> 0
+      MessageBox MB_ICONINFORMATION|MB_OKCANCEL "Voiceolator is still running. Quit it (right-click its tray icon → Quit Voiceolator), then click OK." /SD IDOK IDOK +2
+      Abort
+    ${EndIf}
   ${EndIf}
 FunctionEnd
+
+; "Isolate the voice with Voiceolator" in the Explorer right-click menu of media files
+!macro VoMenu EXT
+  WriteRegStr HKCU "Software\Classes\SystemFileAssociations\.${EXT}\shell\Voiceolator" "" "Isolate the voice with Voiceolator"
+  WriteRegStr HKCU "Software\Classes\SystemFileAssociations\.${EXT}\shell\Voiceolator" "Icon" "$INSTDIR\Voiceolator.exe"
+  WriteRegStr HKCU "Software\Classes\SystemFileAssociations\.${EXT}\shell\Voiceolator\command" "" '"$INSTDIR\Voiceolator.exe" "%1"'
+!macroend
+!macro VoUnMenu EXT
+  DeleteRegKey HKCU "Software\Classes\SystemFileAssociations\.${EXT}\shell\Voiceolator"
+!macroend
+!macro VoForEach MACRO
+  !insertmacro ${MACRO} mp4
+  !insertmacro ${MACRO} mkv
+  !insertmacro ${MACRO} webm
+  !insertmacro ${MACRO} mov
+  !insertmacro ${MACRO} m4v
+  !insertmacro ${MACRO} avi
+  !insertmacro ${MACRO} flv
+  !insertmacro ${MACRO} ts
+  !insertmacro ${MACRO} mp3
+  !insertmacro ${MACRO} m4a
+  !insertmacro ${MACRO} aac
+  !insertmacro ${MACRO} wav
+  !insertmacro ${MACRO} flac
+  !insertmacro ${MACRO} ogg
+  !insertmacro ${MACRO} opus
+!macroend
 
 Section "Voiceolator (required)" SecMain
   SectionIn RO
@@ -122,17 +157,28 @@ Section "Desktop shortcut" SecDesktop
   CreateShortcut "$DESKTOP\${APPNAME}.lnk" "$INSTDIR\Voiceolator.exe" "" "$INSTDIR\Voiceolator.exe" 0
 SectionEnd
 
+Section "Explorer menu for audio and video files" SecMenu
+  !insertmacro VoForEach VoMenu
+SectionEnd
+
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
   !insertmacro MUI_DESCRIPTION_TEXT ${SecMain} "The Voiceolator app, voice models and command-line tool."
   !insertmacro MUI_DESCRIPTION_TEXT ${SecDesktop} "Put a Voiceolator icon on the desktop."
+  !insertmacro MUI_DESCRIPTION_TEXT ${SecMenu} "Right-click an audio or video file → Isolate the voice with Voiceolator."
 !insertmacro MUI_FUNCTION_DESCRIPTION_END
 
 Section "Uninstall"
   FindWindow $0 "" "Voiceolator"
   ${If} $0 <> 0
-    MessageBox MB_ICONINFORMATION "Please close Voiceolator first, then run the uninstaller again." /SD IDOK
+    ExecWait '"$INSTDIR\Voiceolator.exe" --quit'
+    Sleep 1500
+    FindWindow $0 "" "Voiceolator"
+  ${EndIf}
+  ${If} $0 <> 0
+    MessageBox MB_ICONINFORMATION "Please quit Voiceolator first (right-click its tray icon → Quit Voiceolator), then run the uninstaller again." /SD IDOK
     Abort
   ${EndIf}
+  !insertmacro VoForEach VoUnMenu
   Delete "$INSTDIR\Voiceolator.exe"
   Delete "$INSTDIR\voiceolator-cli.exe" ; optional, if the user added it
   Delete "$INSTDIR\onnxruntime.dll"
@@ -150,7 +196,7 @@ Section "Uninstall"
   Delete "$SMPROGRAMS\${APPNAME}\Uninstall ${APPNAME}.lnk"
   RMDir "$SMPROGRAMS\${APPNAME}"
   Delete "$DESKTOP\${APPNAME}.lnk"
-  ; logs are removed; settings in %APPDATA%\Voiceolator are kept for a later reinstall
+  ; logs and a downloaded ffmpeg are removed; settings in %APPDATA%\Voiceolator are kept
   RMDir /r "$LOCALAPPDATA\${APPNAME}"
   DeleteRegKey HKCU "${UNINSTKEY}"
   DeleteRegKey HKCU "Software\${APPNAME}"

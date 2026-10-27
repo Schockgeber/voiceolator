@@ -2,14 +2,13 @@
 //! Ctrl+Alt+V toggles voice isolation, Ctrl+Alt+M mutes Voiceolator's output.
 
 use crate::app::UiCommand;
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::Sender;
 
 #[cfg(windows)]
-pub fn start(ctx: eframe::egui::Context) -> Option<Receiver<UiCommand>> {
+pub fn start(ctx: eframe::egui::Context, tx: Sender<UiCommand>) {
     use windows::Win32::UI::Input::KeyboardAndMouse::{RegisterHotKey, MOD_ALT, MOD_CONTROL, MOD_NOREPEAT};
     use windows::Win32::UI::WindowsAndMessaging::{GetMessageW, MSG, WM_HOTKEY};
-    let (tx, rx) = channel();
-    std::thread::Builder::new()
+    let _ = std::thread::Builder::new()
         .name("vo-hotkeys".into())
         .spawn(move || unsafe {
             let mods = MOD_CONTROL | MOD_ALT | MOD_NOREPEAT;
@@ -28,13 +27,8 @@ pub fn start(ctx: eframe::egui::Context) -> Option<Receiver<UiCommand>> {
                     ctx.request_repaint();
                 }
             }
-        })
-        .ok()?;
-    Some(rx)
+        });
 }
 
 #[cfg(not(windows))]
-pub fn start(_ctx: eframe::egui::Context) -> Option<Receiver<UiCommand>> {
-    let (_tx, rx) = channel();
-    Some(rx)
-}
+pub fn start(_ctx: eframe::egui::Context, _tx: Sender<UiCommand>) {}

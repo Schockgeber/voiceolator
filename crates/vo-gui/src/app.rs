@@ -1,7 +1,10 @@
-//! The Voiceolator window.
+//! The Voiceolator window: full window (Live + Files tabs), slim bar and tiny pill.
 
-use crate::config::{Config, EngineChoice};
+use crate::config::{Config, EngineChoice, ViewMode};
+use crate::files::{self, Files};
 use crate::platform::{self, OutputInfo, SourceInfo};
+use crate::theme::*;
+use crate::tray::{Tray, TrayState};
 use eframe::egui::{self, Color32, CornerRadius, RichText, Stroke, Vec2};
 use std::collections::VecDeque;
 use std::sync::mpsc::Receiver;
@@ -9,13 +12,10 @@ use std::time::{Duration, Instant};
 use vo_audio::{AudioHost, HostConfig, Level};
 use vo_dsp::Preset;
 
-const ACCENT: Color32 = Color32::from_rgb(46, 214, 196);
-const ACCENT2: Color32 = Color32::from_rgb(160, 132, 255);
-const BG: Color32 = Color32::from_rgb(18, 20, 28);
-const CARD: Color32 = Color32::from_rgb(28, 31, 43);
-const MUTED: Color32 = Color32::from_rgb(140, 146, 168);
-const WARN: Color32 = Color32::from_rgb(255, 190, 70);
-const ERR: Color32 = Color32::from_rgb(255, 95, 95);
+pub const FULL_SIZE: [f32; 2] = [480.0, 800.0];
+pub const FULL_MIN: [f32; 2] = [420.0, 520.0];
+pub const SLIM_SIZE: [f32; 2] = [560.0, 46.0];
+pub const PILL_SIZE: [f32; 2] = [196.0, 40.0];
 
 #[derive(Clone, Debug, PartialEq)]
 enum Status {
@@ -24,10 +24,25 @@ enum Status {
     Measuring,
 }
 
-#[allow(dead_code)] // constructed by the Windows hotkey thread
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Tab {
+    Live,
+    Files,
+}
+
+/// Commands from the tray, global hotkeys and a second app start.
+#[derive(Clone, Debug, PartialEq)]
+#[allow(dead_code)] // not every platform sends every command
 pub enum UiCommand {
     ToggleIsolation,
     ToggleMute,
+    ShowWindow,
+    ToggleWindow,
+    StartStop,
+    SetView(ViewMode),
+    /// Files given on the command line / dropped on the program icon.
+    AddFiles(Vec<std::path::PathBuf>),
+    Quit,
 }
 
 struct Message {
@@ -53,15 +68,23 @@ pub struct VoiceolatorApp {
     resume_after_measure: bool,
     measured: Option<String>,
     meters: (f32, f32, f32),
-    hotkeys: Option<Receiver<UiCommand>>,
+    commands: Receiver<UiCommand>,
     config_dirty: Option<Instant>,
     applied_on_top: Option<bool>,
+    applied_view: Option<ViewMode>,
+    tab: Tab,
+    files: Files,
+    tray: Option<Tray>,
+    hidden: bool,
+    /// Just asked the window to come back; ignore a stale "minimized" until then.
+    restoring: Option<Instant>,
+    quitting: bool,
+    close_dialog: bool,
 }
 
 impl VoiceolatorApp {
-    pub fn new(cc: &eframe::CreationContext<'_>, hotkeys: Option<Receiver<UiCommand>>) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>, mut cfg: Config, commands: Receiver<UiCommand>, tray: Option<Tray>) -> Self {
         style(&cc.egui_ctx);
-        let mut cfg = Config::load();
         let mut messages = VecDeque::new();
         // Crash recovery: give back any app sound a previous run turned down or muted.
         let n = platform::recover(&cfg.muted_sessions);
@@ -73,6 +96,8 @@ impl VoiceolatorApp {
             cfg.save();
         }
         let measured = cfg.last_measured_latency_ms.map(|m| format!("{m:.0} ms (last measured)"));
+        let files = Files::new(&cc.egui_ctx, &cfg);
+        let view = cfg.view;
         let mut app = Self {
             cfg,
             sources: Vec::new(),
@@ -88,9 +113,18 @@ impl VoiceolatorApp {
             resume_after_measure: false,
             measured,
             meters: (-90.0, -90.0, 0.0),
-            hotkeys,
+            commands,
             config_dirty: None,
             applied_on_top: None,
+            // main() already opened the window in the saved layout
+            applied_view: Some(view),
+            tab: Tab::Live,
+            files,
+            tray,
+            hidden: false,
+            restoring: None,
+            quitting: false,
+            close_dialog: false,
         };
         app.refresh_lists();
         if platform::demo_mode() {
@@ -197,6 +231,17 @@ impl VoiceolatorApp {
         self.meters = (-90.0, -90.0, 0.0);
     }
 
+    fn start_stop(&mut self) {
+        match self.status {
+            Status::Running => {
+                self.stop();
+                self.say(Level::Info, "Stopped. Original audio restored.");
+            }
+            Status::Stopped => self.start(),
+            Status::Measuring => {}
+        }
+    }
+
     fn restart_if_running(&mut self) {
         if self.status == Status::Running {
             self.stop();
@@ -217,6 +262,26 @@ impl VoiceolatorApp {
         self.mark_dirty();
     }
 
+    fn toggle_isolation(&mut self) {
+        self.cfg.isolation_enabled = !self.cfg.isolation_enabled;
+        self.push_settings();
+    }
+
+    fn toggle_mute(&mut self) {
+        self.cfg.muted = !self.cfg.muted;
+        self.push_settings();
+    }
+
+    fn cycle_preset(&mut self) {
+        let next = match self.cfg.preset() {
+            Preset::Balanced => Preset::VoicePriority,
+            Preset::VoicePriority => Preset::MaximumSuppression,
+            _ => Preset::Balanced,
+        };
+        self.cfg.apply_preset(next);
+        self.push_settings();
+    }
+
     fn start_measurement(&mut self) {
         self.resume_after_measure = self.status == Status::Running;
         self.stop();
@@ -235,21 +300,148 @@ impl VoiceolatorApp {
         self.say(Level::Info, "Measuring latency: you will hear about 10 short beeps…");
     }
 
-    fn poll(&mut self, ctx: &egui::Context) {
-        if let Some(rx) = &self.hotkeys {
-            let cmds: Vec<UiCommand> = rx.try_iter().collect();
-            for c in cmds {
-                match c {
-                    UiCommand::ToggleIsolation => {
-                        self.cfg.isolation_enabled = !self.cfg.isolation_enabled;
-                        let t = if self.cfg.isolation_enabled { "Voice isolation ON" } else { "Voice isolation OFF (original sound)" };
-                        self.say(Level::Info, t);
-                    }
-                    UiCommand::ToggleMute => self.cfg.muted = !self.cfg.muted,
+    // ---------- window: tray, hide/show, layouts ----------
+
+    fn tray_ok(&self) -> bool {
+        self.tray.as_ref().map(|t| t.available()).unwrap_or(false)
+    }
+
+    fn show_window(&mut self, ctx: &egui::Context) {
+        crate::tray::show_native();
+        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+        self.hidden = false;
+        self.restoring = Some(Instant::now());
+    }
+
+    fn hide_window(&mut self, ctx: &egui::Context) {
+        if self.tray_ok() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+            self.hidden = true;
+        } else {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+        }
+    }
+
+    fn set_view(&mut self, ctx: &egui::Context, v: ViewMode) {
+        if v == self.cfg.view {
+            return;
+        }
+        // remember where the current layout was
+        let (outer, inner) = ctx.input(|i| (i.viewport().outer_rect, i.viewport().inner_rect));
+        if let Some(r) = outer {
+            let p = Some([r.min.x, r.min.y]);
+            match self.cfg.view {
+                ViewMode::Full => {
+                    self.cfg.full_pos = p;
+                    self.cfg.full_size = inner.map(|r| [r.width(), r.height()]);
                 }
-                self.push_settings();
+                ViewMode::Slim => self.cfg.slim_pos = p,
+                ViewMode::Pill => self.cfg.pill_pos = p,
             }
         }
+        self.cfg.view = v;
+        self.applied_view = None;
+        self.mark_dirty();
+    }
+
+    fn apply_view(&mut self, ctx: &egui::Context) {
+        if self.applied_view == Some(self.cfg.view) {
+            return;
+        }
+        self.applied_view = Some(self.cfg.view);
+        self.applied_on_top = None;
+        use egui::ViewportCommand as C;
+        let (size, min, pos, deco) = match self.cfg.view {
+            ViewMode::Full => (self.cfg.full_size.unwrap_or(FULL_SIZE), FULL_MIN, self.cfg.full_pos, true),
+            ViewMode::Slim => (SLIM_SIZE, SLIM_SIZE, self.cfg.slim_pos, false),
+            ViewMode::Pill => (PILL_SIZE, PILL_SIZE, self.cfg.pill_pos, false),
+        };
+        ctx.send_viewport_cmd(C::Decorations(deco));
+        ctx.send_viewport_cmd(C::Resizable(deco));
+        ctx.send_viewport_cmd(C::MinInnerSize(min.into()));
+        ctx.send_viewport_cmd(C::InnerSize(size.into()));
+        if let Some(p) = pos {
+            ctx.send_viewport_cmd(C::OuterPosition(p.into()));
+        }
+    }
+
+    fn handle_command(&mut self, ctx: &egui::Context, c: UiCommand) {
+        match c {
+            UiCommand::ToggleIsolation => {
+                self.toggle_isolation();
+                let t = if self.cfg.isolation_enabled { "Voice isolation ON" } else { "Voice isolation OFF (original sound)" };
+                self.say(Level::Info, t);
+            }
+            UiCommand::ToggleMute => self.toggle_mute(),
+            UiCommand::ShowWindow => self.show_window(ctx),
+            UiCommand::ToggleWindow => {
+                let minimized = ctx.input(|i| i.viewport().minimized.unwrap_or(false));
+                if self.hidden || minimized {
+                    self.show_window(ctx);
+                } else {
+                    self.hide_window(ctx);
+                }
+            }
+            UiCommand::StartStop => self.start_stop(),
+            UiCommand::SetView(v) => {
+                self.show_window(ctx);
+                self.set_view(ctx, v);
+            }
+            UiCommand::AddFiles(v) => {
+                self.files.add(v);
+                self.tab = Tab::Files;
+                self.show_window(ctx);
+                self.set_view(ctx, ViewMode::Full);
+            }
+            UiCommand::Quit => {
+                self.quitting = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+        }
+    }
+
+    fn window_events(&mut self, ctx: &egui::Context) {
+        let (close, minimized) = ctx.input(|i| (i.viewport().close_requested(), i.viewport().minimized.unwrap_or(false)));
+        if close && !self.quitting && self.cfg.close_to_tray && self.tray_ok() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            if self.cfg.close_asked {
+                self.hide_window(ctx);
+            } else {
+                self.close_dialog = true;
+            }
+        }
+        if let Some(t) = self.restoring {
+            if !minimized || t.elapsed() > Duration::from_secs(2) {
+                self.restoring = None;
+            }
+        }
+        if minimized && !self.hidden && self.restoring.is_none() && self.cfg.minimize_to_tray && self.tray_ok() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+            self.hidden = true;
+        }
+        if self.hidden && !self.tray_ok() {
+            // the tray went away: never leave the window unreachable
+            self.show_window(ctx);
+        }
+        let dropped: Vec<std::path::PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).collect());
+        if !dropped.is_empty() {
+            self.files.add(dropped);
+            self.tab = Tab::Files;
+            if self.cfg.view != ViewMode::Full {
+                self.set_view(ctx, ViewMode::Full);
+            }
+        }
+    }
+
+    fn poll(&mut self, ctx: &egui::Context) {
+        let cmds: Vec<UiCommand> = self.commands.try_iter().collect();
+        for c in cmds {
+            self.handle_command(ctx, c);
+        }
+        self.window_events(ctx);
+        self.apply_view(ctx);
         if let Some(rx) = &self.latency_job {
             if let Ok(r) = rx.try_recv() {
                 self.latency_job = None;
@@ -283,6 +475,16 @@ impl VoiceolatorApp {
             }
             self.say(e.level, e.message);
         }
+        // file processing runs in the background, also while the window is hidden
+        let mut dirty = false;
+        {
+            let (engine, label, settings) = self.file_engine();
+            let mut env = files::Env { cfg: &mut self.cfg, engine, engine_label: label, settings, dirty: &mut dirty };
+            self.files.poll(ctx, &mut env);
+        }
+        if dirty {
+            self.mark_dirty();
+        }
         if self.status == Status::Running {
             if let Some(h) = &self.hide {
                 if !self.hide_reported {
@@ -306,12 +508,13 @@ impl VoiceolatorApp {
                 self.meters.1 = decay(self.meters.1, t.output_peak_db.get().max(-90.0));
                 self.meters.2 = t.speech_activity.get();
             }
-            ctx.request_repaint_after(Duration::from_millis(66));
+            ctx.request_repaint_after(Duration::from_millis(if self.hidden { 250 } else { 66 }));
         } else {
-            if self.last_refresh.elapsed() > Duration::from_secs(4) {
+            if self.last_refresh.elapsed() > Duration::from_secs(4) && !self.hidden {
                 self.refresh_lists();
             }
-            ctx.request_repaint_after(Duration::from_millis(if self.status == Status::Measuring { 100 } else { 1000 }));
+            let busy = self.status == Status::Measuring || self.files.busy();
+            ctx.request_repaint_after(Duration::from_millis(if busy { 100 } else { 1000 }));
         }
         if let Some(t) = self.config_dirty {
             if t.elapsed() > Duration::from_millis(800) {
@@ -319,11 +522,31 @@ impl VoiceolatorApp {
                 self.cfg.save();
             }
         }
-        if self.applied_on_top != Some(self.cfg.always_on_top) {
-            self.applied_on_top = Some(self.cfg.always_on_top);
-            let level = if self.cfg.always_on_top { egui::WindowLevel::AlwaysOnTop } else { egui::WindowLevel::Normal };
+        let on_top = if self.cfg.view == ViewMode::Full { self.cfg.always_on_top } else { self.cfg.compact_on_top };
+        if self.applied_on_top != Some(on_top) {
+            self.applied_on_top = Some(on_top);
+            let level = if on_top { egui::WindowLevel::AlwaysOnTop } else { egui::WindowLevel::Normal };
             ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(level));
         }
+        let state = TrayState {
+            running: self.status == Status::Running,
+            isolation: self.cfg.isolation_enabled,
+            muted: self.cfg.muted,
+            view: self.cfg.view,
+            window_visible: !self.hidden,
+        };
+        if let Some(t) = &mut self.tray {
+            t.update(state);
+        }
+    }
+
+    fn file_engine(&self) -> (vo_dsp::EngineKind, String, vo_dsp::Settings) {
+        let (engine, _) = platform::engine_kind(self.cfg.engine);
+        let label = match self.cfg.engine {
+            EngineChoice::Quality => "Quality engine",
+            EngineChoice::Light => "Light engine",
+        };
+        (engine, label.to_string(), self.cfg.settings())
     }
 }
 
@@ -331,117 +554,91 @@ fn pretty(exe: &str) -> String {
     SourceInfo { exe: exe.to_string(), pid: 0, playing: false }.label()
 }
 
-fn style(ctx: &egui::Context) {
-    ctx.set_visuals(egui::Visuals::dark());
-    ctx.global_style_mut(|s| {
-        s.spacing.item_spacing = Vec2::new(8.0, 7.0);
-        s.spacing.button_padding = Vec2::new(10.0, 5.0);
-        s.spacing.slider_width = 210.0;
-        let v = &mut s.visuals;
-        v.panel_fill = BG;
-        v.window_fill = BG;
-        v.extreme_bg_color = Color32::from_rgb(14, 15, 21);
-        v.selection.bg_fill = ACCENT.linear_multiply(0.55);
-        v.selection.stroke = Stroke::new(1.0, ACCENT);
-        v.hyperlink_color = ACCENT;
-        v.slider_trailing_fill = true;
-        v.override_text_color = Some(Color32::from_rgb(218, 222, 234));
-        for w in [&mut v.widgets.inactive, &mut v.widgets.hovered, &mut v.widgets.active, &mut v.widgets.open] {
-            w.corner_radius = CornerRadius::same(6);
-        }
-        v.widgets.inactive.weak_bg_fill = Color32::from_rgb(40, 44, 60);
-        v.widgets.inactive.bg_fill = Color32::from_rgb(40, 44, 60);
-        v.widgets.hovered.weak_bg_fill = Color32::from_rgb(52, 57, 78);
-        v.widgets.active.weak_bg_fill = Color32::from_rgb(60, 66, 90);
-    });
-}
-
-fn card<R>(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
-    egui::Frame::NONE
-        .fill(CARD)
-        .corner_radius(CornerRadius::same(10))
-        .inner_margin(egui::Margin::same(12))
-        .show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            ui.label(RichText::new(title).size(12.5).color(MUTED).strong());
-            ui.add_space(2.0);
-            add(ui)
-        })
-        .inner
-}
-
-/// Horizontal level meter: value in 0..1, with dB/percent caption.
-fn meter(ui: &mut egui::Ui, label: &str, frac: f32, caption: &str, color: Color32) {
-    ui.horizontal(|ui| {
-        cell(ui, 92.0, RichText::new(label).color(MUTED));
-        let w = (ui.available_width() - 70.0).max(60.0);
-        let (rect, _) = ui.allocate_exact_size(Vec2::new(w, 10.0), egui::Sense::hover());
-        let p = ui.painter();
-        p.rect_filled(rect, CornerRadius::same(5), Color32::from_rgb(14, 15, 21));
-        let mut fill = rect;
-        fill.set_width(rect.width() * frac.clamp(0.0, 1.0));
-        if fill.width() > 1.0 {
-            p.rect_filled(fill, CornerRadius::same(5), color);
-        }
-        ui.label(RichText::new(caption).monospace().size(11.5).color(MUTED));
-    });
-}
-
-/// A label in a fixed-width, left-aligned cell (for form-like rows).
-fn cell(ui: &mut egui::Ui, w: f32, text: impl Into<egui::WidgetText>) -> egui::Response {
-    ui.allocate_ui_with_layout(Vec2::new(w, 20.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
-        ui.set_min_width(w);
-        ui.label(text)
-    })
-    .inner
-}
-
-fn db_frac(db: f32) -> f32 {
-    ((db + 60.0) / 60.0).clamp(0.0, 1.0)
-}
-
-fn slider_row(ui: &mut egui::Ui, label: &str, hint: &str, value: &mut f32) -> bool {
-    let mut changed = false;
-    ui.horizontal(|ui| {
-        cell(ui, 160.0, label).on_hover_text(hint);
-        ui.spacing_mut().slider_width = (ui.available_width() - 52.0).max(80.0);
-        let r = ui.add(egui::Slider::new(value, 0.0..=1.0).show_value(false));
-        changed = r.changed();
-        ui.label(RichText::new(format!("{:>3.0}%", *value * 100.0)).monospace().color(MUTED));
-    });
-    changed
-}
-
 impl eframe::App for VoiceolatorApp {
+    /// Runs every tick, also while the window is hidden in the tray.
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.poll(ctx);
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        match self.cfg.view {
+            ViewMode::Full => self.full_ui(ui),
+            ViewMode::Slim => self.slim_ui(ui),
+            ViewMode::Pill => self.pill_ui(ui),
+        }
+        self.close_dialog_ui(ui.ctx());
+    }
+
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.files.shutdown();
+        self.stop();
+        self.cfg.save();
+    }
+}
+
+// ---------- full window ----------
+
+impl VoiceolatorApp {
+    fn full_ui(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
-        self.poll(&ctx);
         let running = self.status == Status::Running;
         let measuring = self.status == Status::Measuring;
 
-        egui::Panel::top("header").frame(egui::Frame::NONE.fill(BG).inner_margin(egui::Margin::symmetric(14, 10))).show(ui, |ui| {
+        egui::Panel::top("header").frame(egui::Frame::NONE.fill(BG).inner_margin(egui::Margin { left: 14, right: 14, top: 10, bottom: 4 })).show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label(RichText::new("Voiceolator").size(22.0).strong().color(Color32::WHITE));
-                ui.label(RichText::new("voice-only stream audio").size(12.0).color(MUTED));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let (text, fill) = if running { ("Stop", Color32::from_rgb(110, 48, 60)) } else { ("Start", ACCENT) };
+                    let (text, fill) = if running { ("Stop", STOP) } else { ("Start", ACCENT) };
                     let btn = egui::Button::new(RichText::new(text).size(16.0).strong().color(if running { Color32::WHITE } else { Color32::BLACK }))
                         .fill(fill)
                         .min_size(Vec2::new(108.0, 34.0))
                         .corner_radius(CornerRadius::same(8));
-                    if ui.add_enabled(!measuring, btn).clicked() {
-                        if running {
-                            self.stop();
-                            self.say(Level::Info, "Stopped. Original audio restored.");
-                        } else {
-                            self.start();
-                        }
+                    if ui.add_enabled(!measuring, btn).on_hover_text("Start or stop listening to the stream").clicked() {
+                        self.start_stop();
                     }
+                    ui.menu_button(RichText::new("⊟").size(18.0), |ui| {
+                        ui.label(RichText::new("Compact window").color(MUTED).size(12.0));
+                        if ui.button("Slim bar").clicked() {
+                            self.set_view(&ctx, ViewMode::Slim);
+                            ui.close();
+                        }
+                        if ui.button("Tiny pill").clicked() {
+                            self.set_view(&ctx, ViewMode::Pill);
+                            ui.close();
+                        }
+                        let mut top = self.cfg.compact_on_top;
+                        if ui.checkbox(&mut top, "Keep compact window on top").changed() {
+                            self.cfg.compact_on_top = top;
+                            self.mark_dirty();
+                        }
+                        if self.tray_ok() {
+                            ui.separator();
+                            if ui.button("Hide to tray").clicked() {
+                                ui.close();
+                                self.hide_window(&ctx);
+                            }
+                        }
+                    })
+                    .response
+                    .on_hover_text("Compact window / hide to tray");
                 });
+            });
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                for (t, label) in [(Tab::Live, "Live stream"), (Tab::Files, "Files")] {
+                    let sel = self.tab == t;
+                    let b = egui::Button::new(RichText::new(label).color(if sel { Color32::WHITE } else { MUTED }).strong())
+                        .fill(if sel { CARD } else { BG })
+                        .stroke(if sel { Stroke::new(1.0, ACCENT.linear_multiply(0.6)) } else { Stroke::NONE })
+                        .min_size(Vec2::new(110.0, 26.0));
+                    if ui.add(b).clicked() {
+                        self.tab = t;
+                    }
+                }
             });
         });
 
-        egui::Panel::bottom("status").frame(egui::Frame::NONE.fill(Color32::from_rgb(14, 15, 21)).inner_margin(egui::Margin::symmetric(14, 8))).show(ui, |ui| {
+        egui::Panel::bottom("status").frame(egui::Frame::NONE.fill(DARK).inner_margin(egui::Margin::symmetric(14, 8))).show(ui, |ui| {
             let (dot, txt) = match self.status {
                 Status::Running => (ACCENT, format!("Running · {}", self.engine_label)),
                 Status::Measuring => (WARN, "Measuring latency…".to_string()),
@@ -451,6 +648,9 @@ impl eframe::App for VoiceolatorApp {
                 let (r, _) = ui.allocate_exact_size(Vec2::new(10.0, 10.0), egui::Sense::hover());
                 ui.painter().circle_filled(r.center(), 4.5, dot);
                 ui.label(RichText::new(txt).color(Color32::LIGHT_GRAY));
+                if let Some(f) = self.files.status_line() {
+                    ui.label(RichText::new(format!("· {f}")).color(ACCENT2));
+                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(RichText::new(concat!("v", env!("CARGO_PKG_VERSION"))).color(MUTED).size(11.0));
                     if cfg!(windows) {
@@ -472,29 +672,77 @@ impl eframe::App for VoiceolatorApp {
         });
 
         egui::CentralPanel::default_margins().frame(egui::Frame::NONE.fill(BG).inner_margin(egui::Margin::symmetric(14, 6))).show(ui, |ui| {
-            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-                self.audio_card(ui, running);
-                ui.add_space(8.0);
-                self.isolation_card(ui);
-                ui.add_space(8.0);
-                self.output_card(ui);
-                ui.add_space(8.0);
-                self.monitor_card(ui, running, measuring);
-                ui.add_space(8.0);
-                self.options_card(ui);
-                ui.add_space(6.0);
+            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| match self.tab {
+                Tab::Live => {
+                    self.audio_card(ui);
+                    ui.add_space(8.0);
+                    self.isolation_card(ui);
+                    ui.add_space(8.0);
+                    self.output_card(ui);
+                    ui.add_space(8.0);
+                    self.monitor_card(ui, running, measuring);
+                    ui.add_space(8.0);
+                    self.options_card(ui);
+                    ui.add_space(6.0);
+                }
+                Tab::Files => {
+                    let mut dirty = false;
+                    let (engine, label, settings) = self.file_engine();
+                    let mut env = files::Env { cfg: &mut self.cfg, engine, engine_label: label, settings, dirty: &mut dirty };
+                    self.files.ui(ui, &mut env);
+                    if dirty {
+                        self.mark_dirty();
+                    }
+                    ui.add_space(6.0);
+                }
             });
         });
+
+        // drag-and-drop hint
+        if ctx.input(|i| !i.raw.hovered_files.is_empty()) {
+            let r = ctx.content_rect();
+            let p = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("drop")));
+            p.rect_filled(r, CornerRadius::ZERO, Color32::from_black_alpha(190));
+            p.text(r.center(), egui::Align2::CENTER_CENTER, "Drop to isolate the voice", egui::FontId::proportional(22.0), ACCENT);
+        }
     }
 
-    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
-        self.stop();
-        self.cfg.save();
+    fn close_dialog_ui(&mut self, ctx: &egui::Context) {
+        if !self.close_dialog {
+            return;
+        }
+        let mut choice = None;
+        egui::Modal::new(egui::Id::unique("close_dialog")).show(ctx, |ui| {
+            ui.set_max_width(360.0);
+            ui.label(RichText::new("Keep Voiceolator running?").size(18.0).strong());
+            ui.add_space(4.0);
+            ui.label("Voiceolator can keep cleaning the stream in the background. Click its icon in the system tray to bring the window back.");
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if ui.add(pill_button("Keep running in the tray", ACCENT, true)).clicked() {
+                    choice = Some(true);
+                }
+                if ui.button("Quit").clicked() {
+                    choice = Some(false);
+                }
+            });
+            ui.label(RichText::new("You can change this later in Options.").size(11.5).color(MUTED));
+        });
+        if let Some(keep) = choice {
+            self.close_dialog = false;
+            self.cfg.close_asked = true;
+            self.cfg.close_to_tray = keep;
+            self.cfg.save();
+            if keep {
+                self.hide_window(ctx);
+            } else {
+                self.quitting = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+        }
     }
-}
 
-impl VoiceolatorApp {
-    fn audio_card(&mut self, ui: &mut egui::Ui, _running: bool) {
+    fn audio_card(&mut self, ui: &mut egui::Ui) {
         card(ui, "AUDIO ROUTING", |ui| {
             let mut restart = false;
             ui.horizontal(|ui| {
@@ -571,8 +819,7 @@ impl VoiceolatorApp {
             ui.horizontal(|ui| {
                 for p in Preset::ALL {
                     let sel = self.cfg.preset() == p;
-                    let b = egui::Button::new(RichText::new(p.label()).color(if sel { Color32::BLACK } else { Color32::LIGHT_GRAY }))
-                        .fill(if sel { ACCENT2 } else { Color32::from_rgb(40, 44, 60) });
+                    let b = egui::Button::new(RichText::new(p.label()).color(if sel { Color32::BLACK } else { Color32::LIGHT_GRAY })).fill(if sel { ACCENT2 } else { BUTTON });
                     let hint = match p {
                         Preset::Balanced => "Strong music/effects removal, natural sound",
                         Preset::VoicePriority => "Never cut quiet words; lets a little more background through",
@@ -623,10 +870,9 @@ impl VoiceolatorApp {
                     self.push_settings();
                 }
                 let m = self.cfg.muted;
-                let b = egui::Button::new(if m { "Muted" } else { "Mute" }).fill(if m { Color32::from_rgb(90, 50, 55) } else { Color32::from_rgb(40, 44, 60) });
+                let b = egui::Button::new(if m { "Muted" } else { "Mute" }).fill(if m { Color32::from_rgb(90, 50, 55) } else { BUTTON });
                 if ui.add(b).on_hover_text("Mute Voiceolator's output (Ctrl+Alt+M)").clicked() {
-                    self.cfg.muted = !m;
-                    self.push_settings();
+                    self.toggle_mute();
                 }
             });
         });
@@ -646,11 +892,15 @@ impl VoiceolatorApp {
                     Some(t) if running && t.engine_ok.load(std::sync::atomic::Ordering::Relaxed) => {
                         let l = t.total_latency_ms();
                         let col = if l < 100.0 { ACCENT } else if l < 150.0 { WARN } else { ERR };
-                        ui.label(RichText::new(format!("≈ {l:.0} ms")).strong().color(col))
-                            .on_hover_text(format!(
-                                "Estimate from the actual buffers: capture {:.0} + queue {:.0} + model {:.0} + compute {:.1} + output {:.0} + device {:.0} ms",
-                                t.capture_latency_ms.get(), t.input_queue_ms.get(), t.engine_latency_ms.get(), t.proc_ms_avg.get(), t.output_queue_ms.get(), t.device_queue_ms.get()
-                            ));
+                        ui.label(RichText::new(format!("≈ {l:.0} ms")).strong().color(col)).on_hover_text(format!(
+                            "Estimate from the actual buffers: capture {:.0} + queue {:.0} + model {:.0} + compute {:.1} + output {:.0} + device {:.0} ms",
+                            t.capture_latency_ms.get(),
+                            t.input_queue_ms.get(),
+                            t.engine_latency_ms.get(),
+                            t.proc_ms_avg.get(),
+                            t.output_queue_ms.get(),
+                            t.device_queue_ms.get()
+                        ));
                     }
                     _ => {
                         ui.label(RichText::new("–").color(MUTED));
@@ -686,6 +936,7 @@ impl VoiceolatorApp {
     }
 
     fn options_card(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
         egui::CollapsingHeader::new(RichText::new("Options").color(MUTED)).default_open(false).show(ui, |ui| {
             let mut restart = false;
             ui.horizontal(|ui| {
@@ -720,16 +971,52 @@ impl VoiceolatorApp {
                 self.cfg.leveler = lev;
                 self.push_settings();
             }
-            let mut top = self.cfg.always_on_top;
-            if ui.checkbox(&mut top, "Keep window on top").changed() {
-                self.cfg.always_on_top = top;
-                self.mark_dirty();
-            }
             let mut auto = self.cfg.start_automatically;
             if ui.checkbox(&mut auto, "Start listening automatically when Voiceolator opens").changed() {
                 self.cfg.start_automatically = auto;
                 self.mark_dirty();
             }
+            ui.add_space(4.0);
+            ui.label(RichText::new("Window").color(MUTED).size(12.0));
+            let mut top = self.cfg.always_on_top;
+            if ui.checkbox(&mut top, "Keep window on top").changed() {
+                self.cfg.always_on_top = top;
+                self.mark_dirty();
+            }
+            let mut ctop = self.cfg.compact_on_top;
+            if ui.checkbox(&mut ctop, "Keep the slim bar / tiny pill on top").changed() {
+                self.cfg.compact_on_top = ctop;
+                self.mark_dirty();
+            }
+            let tray = self.tray_ok();
+            ui.add_enabled_ui(tray, |ui| {
+                let mut m = self.cfg.minimize_to_tray;
+                if ui.checkbox(&mut m, "Minimize to the system tray").changed() {
+                    self.cfg.minimize_to_tray = m;
+                    self.mark_dirty();
+                }
+                let mut c = self.cfg.close_to_tray;
+                if ui.checkbox(&mut c, "Close button keeps Voiceolator running in the tray").changed() {
+                    self.cfg.close_to_tray = c;
+                    self.cfg.close_asked = true;
+                    self.mark_dirty();
+                }
+            });
+            if !tray {
+                let why = if cfg!(windows) {
+                    "The system tray is not available."
+                } else {
+                    "No system tray found on this desktop (on GNOME, enable the \"AppIndicator\" extension)."
+                };
+                ui.label(RichText::new(why).size(11.5).color(MUTED));
+            }
+            ui.horizontal(|ui| {
+                for v in [ViewMode::Slim, ViewMode::Pill] {
+                    if ui.button(format!("Switch to {}", v.label().to_lowercase())).clicked() {
+                        self.set_view(&ctx, v);
+                    }
+                }
+            });
             ui.horizontal(|ui| {
                 if ui.link("Open log folder").clicked() {
                     let dir = crate::config::log_path().parent().map(|p| p.to_path_buf()).unwrap_or_default();
@@ -746,13 +1033,159 @@ impl VoiceolatorApp {
     }
 }
 
-fn open_path(p: &std::path::Path) {
-    #[cfg(windows)]
-    {
-        let _ = std::process::Command::new("explorer").arg(p).spawn();
+// ---------- compact layouts ----------
+
+impl VoiceolatorApp {
+    /// Background of an undecorated window: drag to move, double-click for the full window.
+    fn compact_frame(&mut self, ui: &mut egui::Ui, add: impl FnOnce(&mut Self, &mut egui::Ui)) {
+        let ctx = ui.ctx().clone();
+        egui::CentralPanel::default_margins().frame(egui::Frame::NONE.fill(CARD).inner_margin(egui::Margin::symmetric(6, 4))).show(ui, |ui| {
+            let rect = ui.max_rect().expand(4.0);
+            let bg = ui.interact(rect, egui::Id::unique("compact_bg"), egui::Sense::click_and_drag());
+            if bg.drag_started() {
+                ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+            }
+            if bg.double_clicked() {
+                self.set_view(&ctx, ViewMode::Full);
+            }
+            ui.painter().rect_stroke(ctx.content_rect().shrink(0.5), CornerRadius::same(4), Stroke::new(1.0, ACCENT.linear_multiply(0.35)), egui::StrokeKind::Inside);
+            ui.horizontal_centered(|ui| {
+                ui.spacing_mut().item_spacing.x = 6.0;
+                add(self, ui);
+            });
+        });
     }
-    #[cfg(not(windows))]
-    {
-        let _ = std::process::Command::new("xdg-open").arg(p).spawn();
+
+    fn power_button(&mut self, ui: &mut egui::Ui, d: f32) {
+        let running = self.status == Status::Running;
+        let (rect, resp) = ui.allocate_exact_size(Vec2::splat(d), egui::Sense::click());
+        let fill = if running { ACCENT } else if resp.hovered() { Color32::from_rgb(60, 66, 90) } else { BUTTON };
+        let p = ui.painter();
+        p.circle_filled(rect.center(), d / 2.0, fill);
+        // power symbol
+        let c = rect.center();
+        let col = if running { Color32::BLACK } else { Color32::WHITE };
+        let r = d * 0.26;
+        let st = Stroke::new(2.0, col);
+        let pts: Vec<egui::Pos2> = (0..=24)
+            .map(|i| {
+                let a = -std::f32::consts::FRAC_PI_2 + 0.75 + (2.0 * std::f32::consts::PI - 1.5) * i as f32 / 24.0;
+                egui::pos2(c.x + r * a.cos(), c.y + r * a.sin())
+            })
+            .collect();
+        p.add(egui::Shape::line(pts, st));
+        p.line_segment([egui::pos2(c.x, c.y - r * 1.25), egui::pos2(c.x, c.y - r * 0.2)], st);
+        let tip = if running { "Stop listening" } else { "Start listening" };
+        if resp.on_hover_text(tip).clicked() && self.status != Status::Measuring {
+            self.start_stop();
+        }
     }
+
+    fn led(&self, ui: &mut egui::Ui) {
+        let (rect, _) = ui.allocate_exact_size(Vec2::splat(12.0), egui::Sense::hover());
+        let running = self.status == Status::Running;
+        let speech = if running { self.meters.2.clamp(0.0, 1.0) } else { 0.0 };
+        let base = if running { Color32::from_rgb(30, 70, 66) } else { Color32::from_rgb(50, 52, 64) };
+        let col = lerp(base, ACCENT, speech);
+        ui.painter().circle_filled(rect.center(), 5.0, col);
+    }
+
+    fn expand_button(&mut self, ui: &mut egui::Ui) {
+        if ui.add(egui::Button::new(RichText::new("⛶").size(14.0)).frame(false)).on_hover_text("Full window").clicked() {
+            let ctx = ui.ctx().clone();
+            self.set_view(&ctx, ViewMode::Full);
+        }
+    }
+
+    fn slim_ui(&mut self, ui: &mut egui::Ui) {
+        self.compact_frame(ui, |s, ui| {
+            grip(ui);
+            s.power_button(ui, 30.0);
+            let running = s.status == Status::Running;
+            let on = s.cfg.isolation_enabled;
+            let b = pill_button(if on { "Voice only" } else { "Original" }, if on && running { ACCENT } else if on { Color32::from_rgb(40, 96, 90) } else { Color32::from_rgb(60, 64, 82) }, on && running)
+                .min_size(Vec2::new(84.0, 24.0));
+            if ui.add(b).on_hover_text("Voice isolation on/off (Ctrl+Alt+V)").clicked() {
+                s.toggle_isolation();
+            }
+            let short = match s.cfg.preset() {
+                Preset::Balanced => "Balanced",
+                Preset::VoicePriority => "Voice+",
+                Preset::MaximumSuppression => "Max",
+                Preset::Custom => "Custom",
+            };
+            if ui.add(egui::Button::new(RichText::new(short).color(ACCENT2)).min_size(Vec2::new(72.0, 24.0))).on_hover_text("Preset (click to change)").clicked() {
+                s.cycle_preset();
+            }
+            let m = s.cfg.muted;
+            if ui.add(egui::Button::new(if m { "🔇" } else { "🔊" }).frame(false)).on_hover_text("Mute (Ctrl+Alt+M)").clicked() {
+                s.toggle_mute();
+            }
+            ui.spacing_mut().slider_width = 70.0;
+            let mut db = s.cfg.volume_db;
+            if ui.add(egui::Slider::new(&mut db, -30.0..=12.0).show_value(false)).on_hover_text(format!("Volume {db:+.0} dB")).changed() {
+                s.cfg.volume_db = db;
+                s.push_settings();
+            }
+            s.led(ui);
+            bar(ui, 46.0, 6.0, if running { db_frac(s.meters.1) } else { 0.0 }, ACCENT2);
+            let lat = s.host.as_ref().filter(|_| running).map(|h| h.telemetry().total_latency_ms());
+            ui.label(RichText::new(match lat {
+                Some(l) => format!("{l:.0} ms"),
+                None => "–".into(),
+            })
+            .monospace()
+            .size(11.5)
+            .color(MUTED));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                s.hide_button(ui);
+                s.expand_button(ui);
+            });
+        });
+    }
+
+    fn pill_ui(&mut self, ui: &mut egui::Ui) {
+        self.compact_frame(ui, |s, ui| {
+            s.power_button(ui, 28.0);
+            s.led(ui);
+            let running = s.status == Status::Running;
+            let (txt, col) = match (running, s.cfg.isolation_enabled, s.cfg.muted) {
+                (false, ..) => ("Off", MUTED),
+                (true, _, true) => ("Muted", WARN),
+                (true, true, _) => ("Voice", ACCENT),
+                (true, false, _) => ("Original", Color32::LIGHT_GRAY),
+            };
+            let r = ui.add(egui::Button::new(RichText::new(txt).strong().color(col)).frame(false).min_size(Vec2::new(64.0, 22.0)));
+            if r.on_hover_text("Click: voice isolation on/off").clicked() {
+                s.toggle_isolation();
+            }
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                s.expand_button(ui);
+            });
+        });
+    }
+
+    fn hide_button(&mut self, ui: &mut egui::Ui) {
+        let tip = if self.tray_ok() { "Hide to tray" } else { "Minimize" };
+        if ui.add(egui::Button::new(RichText::new("✖").size(12.0)).frame(false)).on_hover_text(tip).clicked() {
+            let ctx = ui.ctx().clone();
+            self.hide_window(&ctx);
+        }
+    }
+}
+
+/// Six dots: "you can drag this".
+fn grip(ui: &mut egui::Ui) {
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(8.0, 18.0), egui::Sense::hover());
+    for i in 0..3 {
+        for j in 0..2 {
+            let c = egui::pos2(rect.left() + 2.0 + j as f32 * 4.0, rect.top() + 4.0 + i as f32 * 5.0);
+            ui.painter().circle_filled(c, 1.2, MUTED);
+        }
+    }
+}
+
+fn lerp(a: Color32, b: Color32, t: f32) -> Color32 {
+    let f = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t) as u8;
+    Color32::from_rgb(f(a.r(), b.r()), f(a.g(), b.g()), f(a.b(), b.b()))
 }

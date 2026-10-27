@@ -10,6 +10,25 @@ pub enum EngineChoice {
     Light,
 }
 
+/// Window layout: the full window, a slim bar, or a tiny pill.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ViewMode {
+    #[default]
+    Full,
+    Slim,
+    Pill,
+}
+
+impl ViewMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            ViewMode::Full => "Full window",
+            ViewMode::Slim => "Slim bar",
+            ViewMode::Pill => "Tiny pill",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -36,6 +55,31 @@ pub struct Config {
     /// Mixer sessions we muted and have not yet restored (crash recovery).
     pub muted_sessions: Vec<String>,
     pub last_measured_latency_ms: Option<f64>,
+
+    // --- window ---
+    pub view: ViewMode,
+    /// Keep the slim bar / pill above other windows.
+    pub compact_on_top: bool,
+    pub slim_pos: Option<[f32; 2]>,
+    pub pill_pos: Option<[f32; 2]>,
+    pub full_pos: Option<[f32; 2]>,
+    pub full_size: Option<[f32; 2]>,
+    pub minimize_to_tray: bool,
+    pub close_to_tray: bool,
+    /// The "keeps running in the tray" question was answered.
+    pub close_asked: bool,
+
+    // --- file processing ---
+    /// None = save next to the original file.
+    pub files_out_dir: Option<String>,
+    /// wav | mp3 | m4a | flac
+    pub files_format: String,
+    pub files_make_video: bool,
+    pub files_keep_original: bool,
+    /// 0 = automatic.
+    pub files_threads: usize,
+    /// ffmpeg chosen by hand (otherwise it is searched for).
+    pub ffmpeg_path: Option<String>,
 }
 
 impl Default for Config {
@@ -60,6 +104,21 @@ impl Default for Config {
             buffer_ms: 20.0,
             muted_sessions: Vec::new(),
             last_measured_latency_ms: None,
+            view: ViewMode::Full,
+            compact_on_top: true,
+            slim_pos: None,
+            pill_pos: None,
+            full_pos: None,
+            full_size: None,
+            minimize_to_tray: true,
+            close_to_tray: true,
+            close_asked: false,
+            files_out_dir: None,
+            files_format: "wav".into(),
+            files_make_video: true,
+            files_keep_original: false,
+            files_threads: 0,
+            ffmpeg_path: None,
         }
     }
 }
@@ -159,6 +218,14 @@ mod tests {
         let partial: Config = serde_json::from_str(r#"{"source_exe":"chrome.exe","mute_original":false}"#).unwrap();
         assert!(partial.hide_original);
         assert_eq!(partial.engine, EngineChoice::Quality);
+        assert_eq!(partial.view, ViewMode::Full);
+        assert!(partial.close_to_tray && partial.files_make_video);
+        let mut c = Config::default();
+        c.view = ViewMode::Pill;
+        c.pill_pos = Some([10.0, 20.0]);
+        let back: Config = serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap();
+        assert_eq!(back.view, ViewMode::Pill);
+        assert_eq!(back.pill_pos, Some([10.0, 20.0]));
     }
 
     #[test]

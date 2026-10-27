@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.11.0
+
+- **Files tab: isolate the voice in existing audio and video files.** Drop files on the
+  window (or use *Choose files…*, the right-click menu in Explorer, or "Open with" on
+  Linux) and press **Isolate voice**.
+  - Uses the same voice engine, preset and sliders as the live mode.
+  - Writes `name (voice).ext` next to the original (or into a folder you pick). The
+    original file is never changed.
+  - Videos keep their picture unchanged (no re-encoding) and get the clean voice as sound,
+    optionally with the original sound as a second audio track.
+  - Audio as WAV, MP3, M4A or FLAC.
+  - Runs on several CPU cores (automatic: half of them, at most 4), with progress, time
+    left and cancel. It keeps running while the window is hidden.
+  - Built-in decoding of WAV, MP3, AAC/M4A/MP4, FLAC, OGG/Vorbis and MKV/WebM (AAC,
+    Vorbis, FLAC). Everything else (Opus, AC-3, …) and video output need **ffmpeg**:
+    Voiceolator uses an installed ffmpeg, or downloads a pinned, checksum-verified build
+    for you after asking (Windows: gyan.dev, Linux: johnvansickle.com).
+  - The clean voice stays in sync with the picture (encoder delays are compensated).
+  - Command line: `voiceolator-cli process FILE... [--out DIR] [--format wav|mp3|m4a|flac]`,
+    `voiceolator-cli ffmpeg --download`.
+- **System tray** on Windows and Linux (StatusNotifierItem: KDE, Xfce, Cinnamon, MATE,
+  GNOME with the AppIndicator extension, …).
+  - Minimize and the close button send Voiceolator to the tray, and the audio keeps
+    running. The first close asks once. Both can be switched off in Options.
+  - Tray menu: show/hide, start/stop, voice isolation, mute, window layout, quit.
+  - Starting Voiceolator again brings the hidden window back.
+  - If there is no tray (e.g. GNOME without the extension), the window never hides.
+- **Compact window layouts**, from the ⊟ button, the tray menu or Options:
+  - **Slim bar** (560×46): start/stop, voice on/off, preset, mute, volume, speech light,
+    output level, latency.
+  - **Tiny pill** (196×40): start/stop, speech light, voice on/off.
+  - Both are borderless, draggable, remember their position, stay on top (switchable),
+    and double-click opens the full window.
+- Installer: Explorer right-click menu "Isolate the voice with Voiceolator" for common
+  audio/video files (optional), and it closes a Voiceolator hidden in the tray before
+  updating. `Voiceolator --quit` quits a running copy.
+- Linux: the menu entry accepts files ("Open with Voiceolator").
+- Fixed: with the light Windows theme, buttons, lists and dialogs were drawn in light
+  colours on the dark window. The app now always uses its dark style.
+
 ## 0.10.0
 
 - **Linux version.** It works with PipeWire (`pipewire-pulse`) and PulseAudio.

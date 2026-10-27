@@ -1,5 +1,5 @@
 # Builds, tests and packages Voiceolator for Windows and Linux.
-# Pushing a tag like v0.10.0 also publishes a GitHub Release with all downloads.
+# Pushing a tag like v0.11.0 also publishes a GitHub Release with all downloads.
 name: ci
 on:
   push:
@@ -17,7 +17,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Tests
-        run: cargo test --release -p vo-dsp -p vo-audio -p vo-gui
+        run: cargo test --release -p vo-dsp -p vo-audio -p vo-media -p vo-gui
       - name: Install NSIS and Python deps
         run: |
           choco install nsis -y
@@ -43,7 +43,7 @@ jobs:
       - name: System packages
         run: sudo apt-get update && sudo apt-get install -y libpulse-dev libfuse2
       - name: Tests
-        run: cargo test --release -p vo-dsp -p vo-audio -p vo-gui
+        run: cargo test --release -p vo-dsp -p vo-audio -p vo-media -p vo-gui
       - name: Tools
         run: |
           pip install markdown ziglang

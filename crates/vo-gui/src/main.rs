@@ -3,8 +3,12 @@
 
 mod app;
 mod config;
+mod files;
 mod hotkeys;
+mod ipc;
 mod platform;
+mod theme;
+mod tray;
 
 use std::io::Write;
 use std::sync::Mutex;
@@ -48,7 +52,7 @@ fn init_logging() {
 
 /// Returns false if another instance is already running (and brings it to the front).
 #[cfg(windows)]
-fn single_instance() -> bool {
+fn single_instance(files: &[std::path::PathBuf]) -> bool {
     use windows::core::w;
     use windows::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS};
     use windows::Win32::System::Threading::CreateMutexW;
@@ -56,6 +60,10 @@ fn single_instance() -> bool {
     unsafe {
         let h = CreateMutexW(None, true, w!("Local\\VoiceolatorSingleInstance"));
         if h.is_ok() && GetLastError() == ERROR_ALREADY_EXISTS {
+            // ask the running copy to show itself (it may be hidden in the tray)
+            if ipc::notify_running(files) {
+                return false;
+            }
             if let Ok(hwnd) = FindWindowW(None, w!("Voiceolator")) {
                 let _ = ShowWindow(hwnd, SW_RESTORE);
                 let _ = SetForegroundWindow(hwnd);
@@ -69,13 +77,15 @@ fn single_instance() -> bool {
 
 /// Linux: an advisory lock in the runtime directory (released automatically on exit/crash).
 #[cfg(unix)]
-fn single_instance() -> bool {
+fn single_instance(files: &[std::path::PathBuf]) -> bool {
     use std::os::unix::io::AsRawFd;
     let dir = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
     let Ok(f) = std::fs::OpenOptions::new().create(true).write(true).truncate(false).open(dir.join("voiceolator.lock")) else { return true };
     let ok = unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0;
     if ok {
         std::mem::forget(f); // hold the lock for the process lifetime
+    } else if ipc::notify_running(files) {
+        eprintln!("Voiceolator is already running; showing its window.");
     } else {
         eprintln!("Voiceolator is already running.");
     }
@@ -83,7 +93,7 @@ fn single_instance() -> bool {
 }
 
 #[cfg(not(any(windows, unix)))]
-fn single_instance() -> bool {
+fn single_instance(_files: &[std::path::PathBuf]) -> bool {
     true
 }
 
@@ -115,14 +125,33 @@ fn main() {
         };
         std::process::exit(code);
     }
+    // `Voiceolator --quit`: ask a running copy to quit (used by the installer).
+    if args.get(1).map(|a| a == "--quit").unwrap_or(false) {
+        std::process::exit(if ipc::send_quit() { 0 } else { 1 });
+    }
     init_logging();
-    if !single_instance() {
+    // Files passed on the command line (or dropped on the program icon) go to the Files tab.
+    let files: Vec<std::path::PathBuf> = args.iter().skip(1).map(std::path::PathBuf::from).filter(|p| p.exists()).collect();
+    if !single_instance(&files) {
         return;
     }
-    let mut viewport = eframe::egui::ViewportBuilder::default()
-        .with_title("Voiceolator")
-        .with_inner_size([480.0, 800.0])
-        .with_min_inner_size([420.0, 520.0]);
+    let cfg = config::Config::load();
+    let mut viewport = eframe::egui::ViewportBuilder::default().with_title("Voiceolator");
+    // open directly in the saved layout (no flash of the full window)
+    viewport = match cfg.view {
+        config::ViewMode::Full => viewport.with_inner_size(cfg.full_size.unwrap_or(app::FULL_SIZE)).with_min_inner_size(app::FULL_MIN),
+        v => {
+            let (size, pos) = if v == config::ViewMode::Slim { (app::SLIM_SIZE, cfg.slim_pos) } else { (app::PILL_SIZE, cfg.pill_pos) };
+            let mut b = viewport.with_inner_size(size).with_min_inner_size(size).with_decorations(false).with_resizable(false);
+            if let Some(p) = pos {
+                b = b.with_position(p);
+            }
+            if cfg.compact_on_top {
+                b = b.with_always_on_top();
+            }
+            b
+        }
+    };
     if let Some(icon) = load_icon() {
         viewport = viewport.with_icon(icon);
     }
@@ -130,9 +159,24 @@ fn main() {
     let res = eframe::run_native(
         "Voiceolator",
         options,
-        Box::new(|cc| {
-            let keys = hotkeys::start(cc.egui_ctx.clone());
-            Ok(Box::new(app::VoiceolatorApp::new(cc, keys)))
+        Box::new(move |cc| {
+            let (tx, rx) = std::sync::mpsc::channel();
+            hotkeys::start(cc.egui_ctx.clone(), tx.clone());
+            ipc::listen(cc.egui_ctx.clone(), tx.clone());
+            #[cfg(windows)]
+            {
+                use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+                if let Ok(h) = cc.window_handle() {
+                    if let RawWindowHandle::Win32(w) = h.as_raw() {
+                        tray::HWND.store(w.hwnd.get(), std::sync::atomic::Ordering::Relaxed);
+                    }
+                }
+            }
+            if !files.is_empty() {
+                let _ = tx.send(app::UiCommand::AddFiles(files));
+            }
+            let tray = tray::Tray::start(cc.egui_ctx.clone(), tx);
+            Ok(Box::new(app::VoiceolatorApp::new(cc, cfg, rx, tray)))
         }),
     );
     if let Err(e) = res {

@@ -4,8 +4,12 @@
 sounds and alerts from a Twitch stream (or any app) in real time. It plays just the
 streamer's voice to your headphones and leaves your game's sound untouched.
 
-<p align="center"><img src="docs/screenshot.png" width="420" alt="Voiceolator window"></p>
-<p align="center"><sub>UI preview, captured in demo mode with simulated devices.</sub></p>
+<p align="center">
+  <img src="docs/screenshot.png" width="380" alt="Voiceolator: live stream tab">
+  <img src="docs/screenshot-files.png" width="380" alt="Voiceolator: files tab">
+</p>
+<p align="center"><img src="docs/screenshot-compact.png" width="460" alt="Slim bar and tiny pill"></p>
+<p align="center"><sub>Live tab, Files tab, and the slim bar / tiny pill. Captured on Linux in demo mode with simulated devices.</sub></p>
 
 - 🎧 **Voice-only stream audio.** AI speech isolation (DPDFNet / DeepFilterNet3) runs
   locally on your CPU. There is no cloud, no account and no internet access.
@@ -15,6 +19,12 @@ streamer's voice to your headphones and leaves your game's sound untouched.
   just your browser. On Windows it uses "process loopback"; on Linux, a private
   PulseAudio/PipeWire sink. While it runs, it hides the browser's original sound and gives
   it back when you stop.
+- 🎬 **Files too.** Drop a VOD, recording or podcast on the window: you get
+  `name (voice).mp4` with the picture untouched and only the voice as sound (or WAV, MP3,
+  M4A, FLAC audio). Uses several CPU cores; ffmpeg is used for video and is downloaded
+  only if you agree.
+- 🧩 **Stays out of the way.** System tray, plus a slim bar or a tiny always-on-top pill
+  instead of the full window.
 - 🐧 **Windows and Linux.** Windows 10/11 installer or portable zip; Linux AppImage or
   tarball.
 - 🎚️ **Presets and sliders:**
@@ -51,7 +61,11 @@ Fedora 32 or newer). The window runs on X11, and on Wayland through XWayland.
    **Play on**.
 3. Press **Start**, then launch your game.
 
-The full [user guide](docs/USER_GUIDE.md) covers controls, troubleshooting and limits.
+**Files:** open the **Files** tab, drop audio or video files on the window and press
+**Isolate voice**.
+
+The full [user guide](docs/USER_GUIDE.md) covers controls, files, the tray, the compact
+window, troubleshooting and limits.
 
 ## How well does it work?
 
@@ -90,8 +104,9 @@ Game ─────────────────────────
 |---|---|
 | `vo-dsp` | Voice engines (DPDFNet on ONNX Runtime, DeepFilterNet3 on tract), processing pipeline, presets, clock-drift resampler |
 | `vo-audio` | Real-time audio host (capture/DSP/render threads, auto-reconnect, MMCSS), crash watchdog, and two backends: Windows (process loopback, hiding the original sound, latency measurement) and Linux (PulseAudio/PipeWire private capture sink, latency measurement) |
-| `vo-gui` | The desktop app (egui) |
-| `vo-cli` | Command-line tool: `apps`, `devices`, `run`, `latency`, `bench`, `process` |
+| `vo-media` | File processing: decoding (Symphonia or ffmpeg), the same pipeline on several cores, WAV/ffmpeg output and video remuxing, ffmpeg discovery and verified download |
+| `vo-gui` | The desktop app (egui): Live and Files tabs, tray (Windows notification area / Linux StatusNotifierItem), slim bar and pill layouts |
+| `vo-cli` | Command-line tool: `apps`, `devices`, `run`, `latency`, `bench`, `process`, `ffmpeg` |
 | `vo-eval` + `tools/eval` | Offline evaluation of the exact real-time pipeline |
 
 See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for building, testing and packaging.
@@ -104,6 +119,14 @@ See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for building, testing and packagi
 - [ONNX Runtime](https://github.com/microsoft/onnxruntime) (MIT)
 - [wasapi-rs](https://github.com/HEnquist/wasapi-rs) (MIT)
 - [egui](https://github.com/emilk/egui) (MIT/Apache-2.0)
+- [Symphonia](https://github.com/pdeljanov/Symphonia) (MPL-2.0),
+  [rubato](https://github.com/HEnquist/rubato) (MIT),
+  [tray-icon](https://github.com/tauri-apps/tray-icon) (MIT/Apache-2.0),
+  [ksni](https://github.com/iovxw/ksni) (Unlicense),
+  [rfd](https://github.com/PolyMeilex/rfd) (MIT)
+- [FFmpeg](https://ffmpeg.org) is not included; it is used if present or downloaded on
+  request from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) (Windows) or
+  [johnvansickle.com](https://johnvansickle.com/ffmpeg/) (Linux).
 
 All third-party licenses are listed in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 

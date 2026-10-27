@@ -1,0 +1,23 @@
+[package]
+name = "vo-media"
+description = "Voiceolator file processing: decode audio/video files, isolate the voice, write audio or video"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+vo-dsp = { path = "../vo-dsp" }
+anyhow.workspace = true
+log.workspace = true
+hound = "3.5"
+symphonia = { version = "0.5", default-features = false, features = ["aac", "alac", "flac", "mp3", "pcm", "vorbis", "wav", "ogg", "mkv", "isomp4", "adpcm"] }
+rubato = "0.16"
+ureq = { version = "2.12", default-features = false, features = ["tls", "native-certs"] }
+sha2 = "0.10"
+
+[target.'cfg(windows)'.dependencies]
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[target.'cfg(not(windows))'.dependencies]
+lzma-rs = "0.3"
+tar = { version = "0.4", default-features = false }

@@ -4,13 +4,14 @@
 
 ```
 crates/vo-dsp     platform-independent DSP: engines, pipeline, presets, drift resampler
-crates/vo-audio   audio host + Windows WASAPI backend (capture, render, mute, latency)
-crates/vo-gui     desktop app (eframe/egui, glow renderer); demo backend on non-Windows
+crates/vo-audio   audio host + backends: Windows WASAPI, Linux PulseAudio/PipeWire; watchdog
+crates/vo-media   file processing: decode (Symphonia / ffmpeg), parallel pipeline, output, ffmpeg download
+crates/vo-gui     desktop app (eframe/egui, glow): Live + Files tabs, tray, slim bar / pill
 crates/vo-cli     command-line tool (also used for testing on real hardware)
 crates/vo-eval    offline runner of the exact real-time pipeline over WAV files
 tools/eval        test-set builder + scoring (SI-SDR, STOI, PESQ, DNSMOS, dropouts)
-tools/fetch_deps.py   downloads DPDFNet model + onnxruntime.dll (pinned, checksummed)
-tools/package.py      builds installer + portable zip
+tools/fetch_deps.py   downloads DPDFNet model + ONNX Runtime (pinned, checksummed)
+tools/package.py      builds installer, portable zips, AppImage, tarballs, GitHub bundle
 installer/        NSIS script
 docs/             user guide, evaluation, this file
 ```
@@ -77,14 +78,16 @@ This works on PulseAudio and on PipeWire through `pipewire-pulse`.
 ## Tests
 
 ```
-cargo test --release -p vo-dsp -p vo-audio -p vo-gui
+cargo test --release -p vo-dsp -p vo-audio -p vo-media -p vo-gui
 ```
 
 - `vo-dsp`: filters, limiter, delay line, drift resampler (0.1 % clock skew over 60 s).
 - `vo-audio/tests/host_sim.rs`: the full 3-thread host with simulated real-time devices.
   It checks streaming, latency bound, clock-drift absorption and recovery after a device
   disconnect.
-- `vo-gui`: configuration compatibility and preset mapping.
+- `vo-gui`: configuration compatibility, preset mapping, single-instance messages.
+- `vo-media`: resampler alignment, output naming, output planning without ffmpeg, a WAV
+  round trip through the built-in decoder, and parallel = sequential processing.
 - `vo-audio` duck compensator: the gain logic used to hide the original sound on Windows.
 
 Hardware tests (Windows and Linux):
@@ -106,6 +109,37 @@ python tools/eval/evaluate.py --testset TESTSET --bin target/release/vo-eval \
 
 Results and method are in [EVALUATION.md](EVALUATION.md). Test audio is not
 redistributed.
+
+## File processing (`vo-media`)
+
+- `decode.rs`: ffmpeg (`-f f32le` pipe, `aresample=async=1:first_pts=0` so sample 0 is the
+  start of the file) or Symphonia + rubato. AAC in MP4 has a 1024-frame encoder delay that
+  Symphonia does not remove; it is trimmed so the voice stays in sync.
+- `parallel.rs`: 60 s segments, 4 s warm-up per segment, 10 ms cross-fade, one pipeline
+  per worker thread, results written in order. Same SI-SDR as sequential processing.
+- `job.rs`: output planning and writing. Video: `-c:v copy`, voice as AAC in MP4/MOV, as
+  Opus (or FLAC) in Matroska, because Matroska does not signal AAC's encoder delay.
+- `ffmpeg.rs`: discovery and the pinned download (URL mirrors + SHA-256 + size). Update
+  the pins there when moving to a newer build.
+
+Manual test media (needs ffmpeg):
+
+```
+ffmpeg -f lavfi -i testsrc2=s=640x360:r=30 -i speech_music.wav -shortest -c:v libx264 -c:a aac vod.mp4
+voiceolator-cli process vod.mp4 --out out --keep-original-track
+```
+
+## Tray, compact window and single instance (`vo-gui`)
+
+- `tray.rs`: Windows uses the `tray-icon` crate (events go straight to `ShowWindow` so the
+  window comes back even while egui is idle). Linux uses `ksni` (D-Bus StatusNotifierItem);
+  if there is no StatusNotifierWatcher the tray is unavailable and the window never hides.
+- The app does its work in `App::logic`, which eframe keeps calling while the window is
+  hidden, so hotkeys, the tray and file jobs keep working.
+- `ipc.rs`: a second start forwards "show", files or `--quit` to the running copy.
+- Testing without a desktop: Xvfb + a session D-Bus + a small StatusNotifierWatcher
+  (any SNI host works), `VOICEOLATOR_DEMO=1` for simulated audio. `VOICEOLATOR_NO_TRAY=1`
+  disables the tray.
 
 ## Adding a voice model
 

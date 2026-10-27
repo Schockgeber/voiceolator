@@ -16,15 +16,23 @@ vo-audio = { path = "../vo-audio" }
 anyhow.workspace = true
 log.workspace = true
 eframe = { version = "0.37", default-features = false, features = ["glow", "default_fonts", "x11", "links"] }
+# only to enable the monochrome symbol fonts (icons such as 🔊 ✔ ⛶)
+egui = { version = "0.37", default-features = false, features = ["monochrome_emoji_fonts"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 png = "0.17"
+vo-media = { path = "../vo-media" }
 
 [target.'cfg(windows)'.dependencies]
+rfd = { version = "0.17", default-features = false }
+raw-window-handle = "0.6"
+tray-icon = { version = "0.26", default-features = false }
 wasapi = "0.26"
 windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_Security", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
 
 [target.'cfg(not(windows))'.dependencies]
+rfd = { version = "0.17", default-features = false, features = ["xdg-portal"] }
+ksni = { version = "0.3", default-features = false, features = ["blocking", "async-io"] }
 parking_lot = "0.12"
 hound = "3.5"
 libc = "0.2"

@@ -133,7 +133,8 @@ def package_windows(ver, a):
     with zipfile.ZipFile(cli, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         z.write(os.path.join(bindir, "voiceolator-cli.exe"), "voiceolator-cli.exe")
         z.writestr("README.txt", "Copy voiceolator-cli.exe into your Voiceolator folder (next to onnxruntime.dll and models\\).\r\n"
-                   "Run `voiceolator-cli help` in a terminal. See docs/DEVELOPMENT.md for the commands.\r\n")
+                   "Run `voiceolator-cli help` in a terminal. See docs/DEVELOPMENT.md for the commands.\r\n"
+                   "Files: `voiceolator-cli process \"VOD.mp4\"` writes \"VOD (voice).mp4\" (`voiceolator-cli ffmpeg --download` gets ffmpeg).\r\n")
     out.append(cli)
 
     setup = os.path.join(DIST, f"Voiceolator-{ver}-windows-setup.exe")
@@ -213,7 +214,9 @@ def package_linux(ver, a):
     os.chmod(os.path.join(cli_stage, "voiceolator-cli"), 0o755)
     open(os.path.join(cli_stage, "README.txt"), "w").write(
         "Copy voiceolator-cli into your Voiceolator folder (next to libonnxruntime.so and models/),\n"
-        "or into ~/.local/share/voiceolator after running install.sh. Run `voiceolator-cli help`.\n")
+        "or into ~/.local/share/voiceolator after running install.sh. Run `voiceolator-cli help`.\n"
+        "Files: `voiceolator-cli process VOD.mp4` writes \"VOD (voice).mp4\" (needs ffmpeg for video:\n"
+        "install it with your package manager or run `voiceolator-cli ffmpeg --download`).\n")
     cli = os.path.join(DIST, f"Voiceolator-{ver}-linux-cli-x86_64.tar.gz")
     tardir(cli_stage, cli, f"voiceolator-cli-{ver}")
     out.append(cli)
@@ -228,6 +231,15 @@ This zip contains everything:
 
 * `voiceolator/`: the source repository. Push this folder to GitHub.
 * `release-assets/`: the ready-built downloads. Attach these to a GitHub Release.
+
+## 0. Create the repository
+
+Create an empty repository on GitHub (no README, licence or .gitignore). In its
+**About** box (gear icon) use:
+
+* Description: `Real-time AI voice isolation for Twitch streams and video files. Hear only the streamer's voice while you game: music and sound effects are removed locally, your game audio stays untouched. Windows & Linux.`
+* Topics: `twitch voice-isolation speech-enhancement source-separation noise-suppression real-time-audio audio-processing deep-learning deepfilternet onnxruntime rust egui wasapi pipewire pulseaudio windows linux gaming streaming desktop-app`
+* Tick "Releases".
 
 ## 1. Push the source
 
