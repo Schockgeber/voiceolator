@@ -9,8 +9,8 @@
 
 <br>
 
-<a href="https://github.com/Schockgeber/voiceolator/releases/latest/download/Voiceolator-Setup-Windows-x64.exe"><img src="docs/assets/download-windows.svg" height="64" alt="Download for Windows"></a>&nbsp;
-<a href="https://github.com/Schockgeber/voiceolator/releases/latest/download/Voiceolator-Linux-x86_64.AppImage"><img src="docs/assets/download-linux.svg" height="64" alt="Download for Linux"></a>&nbsp;
+<a href="https://github.com/Schockgeber/voiceolator/releases/download/v0.11.0/Voiceolator-0.11.0-windows-setup.exe"><img src="docs/assets/download-windows.svg" height="64" alt="Download for Windows"></a>&nbsp;
+<a href="https://github.com/Schockgeber/voiceolator/releases/download/v0.11.0/Voiceolator-0.11.0-linux-x86_64.AppImage"><img src="docs/assets/download-linux.svg" height="64" alt="Download for Linux"></a>&nbsp;
 <a href="https://github.com/Schockgeber/voiceolator/releases"><img src="docs/assets/all-downloads.svg" height="64" alt="All downloads"></a>
 
 <sub>Free and open source · runs entirely on your PC · no account, no cloud, no ads</sub>
